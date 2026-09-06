@@ -61,6 +61,16 @@ jobs:
             echo "release=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Releasing $tag."
           fi
+          # A tag left over from `npm version` on a branch points at the branch
+          # commit, not at what was merged. Releasing onto it would attach
+          # assets built here to source from somewhere else, so stop instead.
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            tagged="$(git rev-list -n 1 "$tag")"
+            if [ "$tagged" != "$GITHUB_SHA" ]; then
+              echo "::error::$tag already points at $tagged, not at this commit. Delete that tag (git push --delete origin $tag) or bump the version again."
+              exit 1
+            fi
+          fi
 
       - if: steps.check.outputs.release == 'true'
         run: npm ci
