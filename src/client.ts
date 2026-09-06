@@ -1,6 +1,7 @@
 import { io, type Socket } from 'socket.io-client';
 import { Emitter } from './emitter.js';
 import { WebchatError, isAuthFailure, toWebchatError } from './errors.js';
+import { TelemetryReporter } from './telemetry.js';
 import {
   PROTOCOL_VERSION,
   type ChatCompleteEvent,
@@ -88,6 +89,11 @@ export class WebchatClient extends Emitter<WebchatEvents> {
   /** Keyed by the client-generated id we sent as `chat:send.id`. */
   private readonly pending = new Map<string, PendingTurn>();
   private destroyed = false;
+  /**
+   * Reports client-side failures to the agent. Off when `telemetry: false`.
+   * Its own failures are swallowed — see ./telemetry.ts.
+   */
+  private readonly telemetry: TelemetryReporter | undefined;
 
   constructor(options: WebchatClientOptions) {
     super();
@@ -98,6 +104,11 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     this.tokenProvider =
       options.tokenProvider ??
       createDefaultTokenProvider({ headers: options.headers, fetchImpl: options.fetch });
+
+    this.telemetry =
+      options.telemetry === false
+        ? undefined
+        : new TelemetryReporter({ url: options.url, fetchImpl: options.fetch });
 
     if (options.autoConnect) void this.connect().catch(() => undefined);
   }
@@ -240,7 +251,23 @@ export class WebchatClient extends Emitter<WebchatEvents> {
   destroy(): void {
     this.destroyed = true;
     this.disconnect();
+    this.telemetry?.close();
     this.removeAllListeners();
+  }
+
+  /**
+   * Every error this client reports also goes to the agent, so the browser's
+   * half of a conversation is on the same trace as the server's.
+   *
+   * Overriding `emit` rather than calling the reporter from each failure site
+   * is what keeps that true: a failure added later is reported without anyone
+   * having to remember to.
+   */
+  protected override emit<K extends keyof WebchatEvents>(event: K, payload: WebchatEvents[K]): void {
+    if (event === 'error' && payload instanceof WebchatError) {
+      this.telemetry?.report({ level: 'error', code: payload.code, message: payload.message });
+    }
+    super.emit(event, payload);
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
@@ -346,6 +373,8 @@ export class WebchatClient extends Emitter<WebchatEvents> {
       this.grant = grant;
       this.grantMintedAt = Date.now();
       if (grant.sessionId) this.knownSessionId = grant.sessionId;
+      // Events queued before a token existed can be attributed now.
+      this.telemetry?.setToken(grant.token);
       return grant;
     } catch (error) {
       const failure =
