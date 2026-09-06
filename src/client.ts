@@ -31,6 +31,29 @@ interface PendingTurn {
   messageId?: string;
 }
 
+/**
+ * How long before `expiresAt` a grant stops being reused. A token that expires
+ * between the check and the agent's verification is refused, and a refused
+ * handshake costs a whole reconnect attempt.
+ */
+const TOKEN_EXPIRY_SKEW_MS = 30_000;
+
+/**
+ * Whether a grant is too close to its expiry to be worth presenting.
+ *
+ * The margin never eats more than half the token's life, so an agent configured
+ * with a very short WEBCHAT_TOKEN_TTL does not put every connect attempt through
+ * a fresh mint — a reconnect storm would then hammer `POST /sessions`.
+ */
+function isSpent(grant: TokenGrant, mintedAt: number): boolean {
+  // A token handed in by the caller may not say when it expires; use it as given.
+  if (!grant.expiresAt) return false;
+  const expiresAt = Date.parse(grant.expiresAt);
+  if (Number.isNaN(expiresAt)) return false;
+  const margin = Math.min(TOKEN_EXPIRY_SKEW_MS, (expiresAt - mintedAt) / 2);
+  return expiresAt - Date.now() <= margin;
+}
+
 function randomId(): string {
   const crypto = globalThis.crypto;
   if (crypto?.randomUUID) return crypto.randomUUID();
@@ -50,6 +73,14 @@ export class WebchatClient extends Emitter<WebchatEvents> {
   private readonly tokenProvider: TokenProvider;
   private socket: AgentSocket | undefined;
   private grant: TokenGrant | undefined;
+  /** When `grant` was obtained, so its remaining life can be judged. */
+  private grantMintedAt = 0;
+  /**
+   * The conversation this client is having, remembered independently of the
+   * grant: a token that expires is replaced, and the replacement must be minted
+   * for the same session or the visitor loses their history.
+   */
+  private knownSessionId: string | undefined;
   private connectPromise: Promise<SessionReadyEvent> | undefined;
   private session: SessionReadyEvent | undefined;
   private state: WebchatStatus = 'idle';
@@ -62,6 +93,8 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     super();
     this.options = options;
     this.grant = options.token ? { token: options.token } : undefined;
+    this.grantMintedAt = Date.now();
+    this.knownSessionId = options.sessionId;
     this.tokenProvider =
       options.tokenProvider ??
       createDefaultTokenProvider({ headers: options.headers, fetchImpl: options.fetch });
@@ -84,7 +117,12 @@ export class WebchatClient extends Emitter<WebchatEvents> {
   }
 
   get sessionId(): string | undefined {
-    return this.session?.sessionId ?? this.grant?.sessionId ?? this.options.sessionId;
+    return (
+      this.session?.sessionId ??
+      this.grant?.sessionId ??
+      this.knownSessionId ??
+      this.options.sessionId
+    );
   }
 
   /** A copy of the transcript held by this client. */
@@ -165,6 +203,7 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     this.reset();
     this.disconnect();
     this.grant = undefined;
+    this.knownSessionId = undefined;
     this.options.sessionId = undefined;
   }
 
@@ -209,10 +248,15 @@ export class WebchatClient extends Emitter<WebchatEvents> {
   private async openSocket(): Promise<SessionReadyEvent> {
     this.setStatus('connecting');
     // Fail fast with a clear error if the token cannot be obtained at all.
-    await this.resolveToken();
+    const grant = await this.resolveToken();
 
     const socket: AgentSocket = io(this.options.url, {
       path: this.options.socketPath ?? '/webchat',
+      // Correlation only. The handshake URL is otherwise identical for every
+      // visitor, which leaves a connection impossible to find again in an
+      // access log or a HAR file. The agent authenticates the signed token in
+      // the socket.io auth payload and never reads these.
+      query: this.correlationQuery(grant),
       transports: this.options.transports ?? ['websocket', 'polling'],
       reconnection: this.options.reconnection ?? true,
       reconnectionAttempts: this.options.reconnectionAttempts ?? Infinity,
@@ -270,8 +314,27 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     });
   }
 
+  /**
+   * Non-secret ids for the handshake URL. Anyone can put anything here, so the
+   * agent trusts none of it — it exists so proxies, CDNs and browser HARs, which
+   * see only the URL, can say which session and project a socket belonged to.
+   *
+   * Spell the names out: `sid`, `t`, `j`, `b64`, `EIO` and `transport` belong to
+   * Engine.IO. A `sid` of our own is read as its polling session id and the
+   * handshake is refused with "Session ID unknown".
+   */
+  private correlationQuery(grant: TokenGrant): Record<string, string> | undefined {
+    if (this.options.correlationIds === false) return undefined;
+    const query: Record<string, string> = {};
+    const sessionId = grant.sessionId ?? this.sessionId;
+    const agentId = grant.agentId ?? this.agentId;
+    if (sessionId) query.sessionId = sessionId;
+    if (agentId) query.agentId = agentId;
+    return Object.keys(query).length > 0 ? query : undefined;
+  }
+
   private async resolveToken(): Promise<TokenGrant> {
-    if (this.grant?.token) return this.grant;
+    if (this.grant?.token && !isSpent(this.grant, this.grantMintedAt)) return this.grant;
 
     try {
       const grant = await this.tokenProvider({
@@ -281,6 +344,8 @@ export class WebchatClient extends Emitter<WebchatEvents> {
         userId: this.options.userId,
       });
       this.grant = grant;
+      this.grantMintedAt = Date.now();
+      if (grant.sessionId) this.knownSessionId = grant.sessionId;
       return grant;
     } catch (error) {
       const failure =
@@ -298,6 +363,7 @@ export class WebchatClient extends Emitter<WebchatEvents> {
   private bind(socket: AgentSocket): void {
     socket.on('session:ready', (event) => {
       this.session = event;
+      this.knownSessionId = event.sessionId;
       this.setStatus('connected');
 
       if (event.protocolVersion !== PROTOCOL_VERSION) {

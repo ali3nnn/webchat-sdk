@@ -239,11 +239,37 @@ in the body and `x-webchat-key` in the headers — that way the issue key never
 reaches the browser.
 
 The provider is called again on every reconnect attempt, so an expired token is
-replaced transparently — the SDK drops a token the agent rejected and asks for a
-new one rather than retrying with the dead one.
+replaced transparently. The SDK does not wait to be told: it re-mints a grant
+once it is within 30 seconds of the `expiresAt` the agent returned (or half the
+token's life, whichever is smaller, so a very short `WEBCHAT_TOKEN_TTL` cannot
+turn a reconnect storm into a mint storm). A token the agent rejects anyway is
+dropped rather than retried. Either way the replacement is minted for the same
+session id, so the visitor keeps their history across an expiry.
 
 Tokens are HMAC-signed and carry the session id, so any replica of the agent
 sharing `WEBCHAT_TOKEN_SECRET` can verify a token it did not issue.
+
+### What is on the wire
+
+Identity travels in the socket.io `auth` payload, inside the signed token — not
+in the URL:
+
+```
+wss://agent.example.com/webchat/?sessionId=…&agentId=…&EIO=4&transport=websocket
+                                └── correlation only, nothing trusts these ──┘
+
+40{"token":"eyJzaWQiOiI…"}   ← the CONNECT packet: sid, aid, uid, iat, exp, signed
+```
+
+Keeping the credential out of the query keeps it out of proxy logs, CDN logs and
+browser history. But an otherwise identical URL for every visitor is unreadable
+in an access log or a HAR file, so the session and project ids ride along as
+plain query parameters. The agent authenticates the token and ignores the query,
+which anyone can forge. Set `correlationIds: false` to leave them off.
+
+Spell those names out. `sid`, `t`, `j`, `b64`, `EIO` and `transport` are
+Engine.IO's own; a `sid` of your own is read as its polling session id and the
+handshake dies with `Session ID unknown`.
 
 ## API
 
@@ -269,6 +295,7 @@ does not surface is still available.
 | `headers` | — | Extra headers for the default token endpoint |
 | `fetch` | `globalThis.fetch` | Injectable fetch |
 | `transports` | `['websocket','polling']` | socket.io transports |
+| `correlationIds` | `true` | Put `sessionId` and `agentId` in the handshake URL for log correlation |
 
 Methods: `connect()`, `send(text)` → resolves with the finished assistant
 message, `cancel()`, `reset()`, `disconnect()`, `destroy()`.

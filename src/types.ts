@@ -137,6 +137,14 @@ export interface WebchatClientOptions {
   fetch?: typeof globalThis.fetch;
   /** socket.io transports. Defaults to websocket first, polling as fallback. */
   transports?: ('websocket' | 'polling')[];
+  /**
+   * Put the session and project ids in the socket.io handshake URL as
+   * `sessionId` and `agentId`, so a connection can be found again in proxy/CDN
+   * access logs and in a visitor's HAR file. Correlation only — the agent reads
+   * identity from the signed token and never from the query. Defaults to true;
+   * set false to keep the handshake URL free of ids.
+   */
+  correlationIds?: boolean;
 }
 
 export interface WebchatEvents {
