@@ -109,6 +109,10 @@ export class WebchatClient extends Emitter<WebchatEvents> {
       options.telemetry === false
         ? undefined
         : new TelemetryReporter({ url: options.url, fetchImpl: options.fetch });
+    // A caller that minted its own token never goes through resolveToken's
+    // success path, so without this the reporter would hold every event
+    // forever waiting for a token it already had.
+    if (options.token) this.telemetry?.setToken(options.token);
 
     if (options.autoConnect) void this.connect().catch(() => undefined);
   }
