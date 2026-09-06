@@ -3,21 +3,25 @@
  *
  *   cd ../ai-agent && LLM_PROVIDER=mock AGENT_ID=support PORT=3210 npm start
  *   cd ../webchat-sdk && npm run build && AGENT_URL=http://localhost:3210 npm run smoke
+ *
+ * PROJECT_TOKEN picks a specific project (copy it from the Chat Studio's embed
+ * snippet); without it the agent answers with its default project.
  */
 import assert from 'node:assert/strict';
 import { createWebchatClient, createWebchatHub } from '../dist/index.js';
 
 const url = process.env.AGENT_URL ?? 'http://localhost:3210';
 const agentId = process.env.AGENT_ID ?? 'support';
+const projectToken = process.env.PROJECT_TOKEN;
 
 const events = [];
-const client = createWebchatClient({ url, agentId });
+const client = createWebchatClient({ url, projectToken });
 client.on('status', (status) => events.push(`status:${status}`));
 client.on('tool', (tool) => events.push(`tool:${tool.name}:${tool.status}`));
 client.on('delta', () => events.push('delta'));
 
 const ready = await client.connect();
-assert.equal(ready.agentId, agentId, 'handshake reports the expected agent');
+if (!projectToken) assert.equal(ready.agentId, agentId, 'handshake reports the expected agent');
 assert.ok(ready.sessionId, 'handshake carries a session id');
 console.log(`connected to ${ready.agentName} (${ready.provider}/${ready.model})`);
 
@@ -39,7 +43,7 @@ assert.ok(events.includes('tool:knowledge_retrieval:started'), 'tool start was r
 assert.equal(client.messages.length, 4, 'transcript holds both turns');
 
 // A bad token must be refused by the handshake.
-const rejected = createWebchatClient({ url, agentId, token: 'not.a-real-token' });
+const rejected = createWebchatClient({ url, projectToken, token: 'not.a-real-token' });
 await assert.rejects(() => rejected.connect(), (error) => {
   assert.equal(error.code, 'auth_failed');
   return true;
@@ -48,9 +52,9 @@ rejected.destroy();
 console.log('auth        -> forged token rejected');
 
 // The hub drives several agent containers through one object.
-const hub = createWebchatHub({ agents: [{ id: agentId, url, label: 'Support' }] });
+const hub = createWebchatHub({ agents: [{ id: agentId, url, projectToken, label: 'Support' }] });
 const hubClient = await hub.connect(agentId);
-assert.equal(hubClient.info?.agentId, agentId);
+assert.equal(hubClient.info?.agentId, ready.agentId);
 console.log(`hub         -> connected ${hub.ids.join(', ')}`);
 
 client.reset();

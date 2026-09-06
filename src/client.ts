@@ -78,8 +78,9 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     return this.session;
   }
 
+  /** The project the agent identified itself as, once a token or handshake says so. */
   get agentId(): string | undefined {
-    return this.session?.agentId ?? this.options.agentId;
+    return this.session?.agentId ?? this.grant?.agentId;
   }
 
   get sessionId(): string | undefined {
@@ -237,7 +238,7 @@ export class WebchatClient extends Emitter<WebchatEvents> {
           new WebchatError(
             `Timed out connecting to ${this.options.url}.`,
             'timeout',
-            { agentId: this.options.agentId },
+            { agentId: this.agentId },
           ),
         );
       }, this.options.connectTimeoutMs ?? 30_000);
@@ -247,7 +248,7 @@ export class WebchatClient extends Emitter<WebchatEvents> {
         resolve(event);
       };
       const onError = (error: Error) => {
-        const failure = toWebchatError(error.message, this.options.agentId ?? 'unknown');
+        const failure = toWebchatError(error.message, this.agentId ?? 'unknown');
         // An auth failure never fixes itself by retrying with the same token.
         if (isAuthFailure(error.message)) {
           this.grant = undefined;
@@ -274,7 +275,7 @@ export class WebchatClient extends Emitter<WebchatEvents> {
 
     try {
       const grant = await this.tokenProvider({
-        agentId: this.options.agentId,
+        projectToken: this.options.projectToken,
         url: this.options.url,
         sessionId: this.sessionId,
         userId: this.options.userId,
@@ -286,7 +287,7 @@ export class WebchatClient extends Emitter<WebchatEvents> {
         error instanceof WebchatError
           ? error
           : new WebchatError('Could not obtain a session token.', 'token_failed', {
-              agentId: this.options.agentId,
+              agentId: this.agentId,
               cause: error,
             });
       this.emit('error', failure);
@@ -309,11 +310,14 @@ export class WebchatClient extends Emitter<WebchatEvents> {
           ),
         );
       }
-      if (this.options.agentId && this.options.agentId !== event.agentId) {
+      // The grant says which project the token was minted for; a socket that
+      // reports another one is not the agent this token belongs to.
+      const expected = this.grant?.agentId;
+      if (expected && expected !== event.agentId) {
         this.emit(
           'error',
           new WebchatError(
-            `Connected to agent "${event.agentId}" but "${this.options.agentId}" was expected.`,
+            `Connected to agent "${event.agentId}" but "${expected}" was expected.`,
             'agent_mismatch',
             { agentId: event.agentId },
           ),
@@ -407,7 +411,7 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     });
 
     socket.on('connect_error', (error) => {
-      const failure = toWebchatError(error.message, this.options.agentId ?? 'unknown');
+      const failure = toWebchatError(error.message, this.agentId ?? 'unknown');
       if (isAuthFailure(error.message)) {
         // Drop the token so the next handshake asks for a fresh one.
         this.grant = undefined;

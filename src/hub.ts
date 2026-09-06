@@ -2,9 +2,8 @@ import { WebchatClient } from './client.js';
 import { WebchatError } from './errors.js';
 import type { WebchatClientOptions } from './types.js';
 
-export interface AgentDescriptor
-  extends Omit<WebchatClientOptions, 'url' | 'agentId' | 'autoConnect'> {
-  /** Id the agent reports as AGENT_ID; used as the key in the hub. */
+export interface AgentDescriptor extends Omit<WebchatClientOptions, 'url' | 'autoConnect'> {
+  /** Your key for this agent in the hub; `client(id)` looks it up. */
   id: string;
   /** Base URL of that agent's container. */
   url: string;
@@ -15,21 +14,21 @@ export interface AgentDescriptor
 export interface WebchatHubOptions {
   agents: AgentDescriptor[];
   /** Options applied to every agent unless the descriptor overrides them. */
-  defaults?: Omit<WebchatClientOptions, 'url' | 'agentId'>;
+  defaults?: Omit<WebchatClientOptions, 'url' | 'projectToken'>;
 }
 
 /**
  * A registry of agent containers behind one SDK.
  *
- * Each agent runs in its own container with its own URL, its own AGENT_ID and
- * its own token — the hub keeps one WebchatClient per agent and hands you the
- * right one. Clients are created lazily, so registering ten agents does not
+ * Each agent runs in its own container with its own URL and its own project
+ * token — the hub keeps one WebchatClient per agent and hands you the right
+ * one. Clients are created lazily, so registering ten agents does not
  * open ten sockets.
  */
 export class WebchatHub {
   private readonly descriptors = new Map<string, AgentDescriptor>();
   private readonly clients = new Map<string, WebchatClient>();
-  private readonly defaults: Omit<WebchatClientOptions, 'url' | 'agentId'>;
+  private readonly defaults: Omit<WebchatClientOptions, 'url' | 'projectToken'>;
 
   constructor(options: WebchatHubOptions) {
     this.defaults = options.defaults ?? {};
@@ -68,12 +67,11 @@ export class WebchatHub {
       );
     }
 
-    const { id: agentId, url, label: _label, ...overrides } = descriptor;
+    const { id: _id, url, label: _label, ...overrides } = descriptor;
     const client = new WebchatClient({
       ...this.defaults,
       ...overrides,
       url,
-      agentId,
     });
     this.clients.set(id, client);
     return client;

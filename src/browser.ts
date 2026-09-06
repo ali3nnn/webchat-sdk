@@ -5,7 +5,9 @@
  * `window.initWebchat`:
  *
  *   <script src="webchatsdk.js"></script>
- *   <script>initWebchat('https://agent.example.com');</script>
+ *   <script>
+ *     initWebchat({ url: 'https://agent.example.com', projectToken: 'wc_…' });
+ *   </script>
  */
 import { initWebchat } from './widget.js';
 

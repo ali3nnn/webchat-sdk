@@ -5,13 +5,20 @@ Drop a chat widget onto any page in two lines:
 ```html
 <script src="https://github.com/ali3nnn/webchat-sdk/releases/latest/download/webchatsdk.js"></script>
 <script>
-  initWebchat("https://your-agent.example.com");
+  initWebchat({
+    url: "https://your-agent.example.com",
+    projectToken: "wc_7Qk2mZp9Ld4Xr8Ts1Vb6",
+  });
 </script>
 ```
 
 That is the whole integration. The first URL is this repository's latest
 release, so a website never builds or hosts SDK files; the second is your own
-agent, the only host you have to run. (An [ai-agent](https://github.com/ali3nnn/ai-agent-studio)
+agent, the only host you have to run. `projectToken` is the project's public
+embed token — copy it from the Chat Studio's **Embed** card, one per project.
+It names a project without exposing its id and is safe to put in a page: it
+selects who answers, it does not authorise anything on its own. Leave it out
+and the agent answers with its default project. (An [ai-agent](https://github.com/ali3nnn/ai-agent-studio)
 deployment can also serve the bundle from its own origin at `/webchatsdk.js` —
 see [Hosting the bundle yourself](#hosting-the-bundle-yourself).) The widget renders a launcher bubble and a chat
 panel inside a **shadow root** — the host page's CSS cannot reach in and the
@@ -22,9 +29,9 @@ stream the reply and the tool activity into the panel.
 Underneath sits a headless client you can drive from your own UI or from Node
 (see [Headless usage](#headless-usage)).
 
-One SDK, many agents: each agent runs in its own container with its own
-`AGENT_ID`, its own URL and its own token. Call `initWebchat` per agent, or use
-`WebchatHub` for a single UI that switches between them.
+One SDK, many agents: each agent has its own URL and its own project token.
+Call `initWebchat` per agent, or use `WebchatHub` for a single UI that switches
+between them.
 
 ```
 browser / node                    ai-agent container
@@ -95,7 +102,7 @@ git push --follow-tags
 <script>
   const widget = initWebchat({
     url: "https://your-agent.example.com",
-    agentId: "support",          // optional: refuse a token from another agent
+    projectToken: "wc_7Qk2mZp9Ld4Xr8Ts1Vb6",   // which project answers
     title: "Support",            // defaults to the agent's own name
     greeting: "Hi! Ask me anything about the product.",
     position: "bottom-right",    // or "bottom-left"
@@ -111,7 +118,7 @@ git push --follow-tags
 | Option | Default | Purpose |
 |---|---|---|
 | `url` | — | Agent base URL (required; the string form of `initWebchat` sets this) |
-| `agentId` | — | Which project (agent) on the server to talk to — sent to `POST /sessions`; a token for another agent raises `agent_mismatch`. Omit for the server's default project. |
+| `projectToken` | — | The project's public embed token (24 characters, `wc_…`), from the Chat Studio — sent to `POST /sessions` and `GET /widget/config`. Omit for the server's default project. |
 | `title` / `subtitle` | agent name / status | Header text |
 | `greeting` | — | First bubble, rendered locally and never sent to the agent |
 | `placeholder` | `Type a message…` | Input placeholder |
@@ -123,7 +130,7 @@ git push --follow-tags
 | `accent` | `#3b5bdb` | Accent colour (shortcut for `settings.colors.launcher` / `userBubble`) |
 | `settings` | — | Overrides for any webchat setting (see below) |
 | `fetchConfig` | `true` | Fetch the agent's webchat settings from `GET /widget/config` |
-| `storageKey` | agent id | `localStorage` namespace for the conversation, privacy acceptance and teaser |
+| `storageKey` | project token | `localStorage` namespace for the conversation, privacy acceptance and teaser |
 
 Every `WebchatClient` option (`token`, `tokenProvider`, `sessionId`, `userId`,
 `reconnection`, `headers`, …) is accepted here too and passed straight through.
@@ -131,7 +138,7 @@ Every `WebchatClient` option (`token`, `tokenProvider`, `sessionId`, `userId`,
 ### Settings from the Chat Studio
 
 The widget's look and behaviour are configured per project in the agent's Chat
-Studio and served at `GET /widget/config?agentId=…`: agent name and avatar,
+Studio and served at `GET /widget/config?projectToken=…`: agent name and avatar,
 colours (launcher, bubbles, background, header), bubble style, greetings,
 teaser message, AI disclaimer, input/send texts, timestamps, privacy notice,
 persistence across pages, the "New chat" button and thumbs up/down feedback.
@@ -141,7 +148,7 @@ per embed:
 ```js
 initWebchat({
   url: "https://your-agent.example.com",
-  agentId: "support",
+  projectToken: "wc_7Qk2mZp9Ld4Xr8Ts1Vb6",
   settings: {
     agentName: "Nova",
     colors: { launcher: "#ff6b3d" },
@@ -160,7 +167,7 @@ and show up in its insights.
 To embed the panel in your own layout instead of floating it:
 
 ```js
-initWebchat({ url: "https://support-agent.example.com", target: "#chat" });
+initWebchat({ url: "https://support-agent.example.com", projectToken: "wc_…", target: "#chat" });
 ```
 
 ## Headless usage
@@ -170,7 +177,7 @@ import { createWebchatClient } from 'webchat-sdk';
 
 const client = createWebchatClient({
   url: 'http://localhost:3210',
-  agentId: 'support',        // optional: rejects a token from another agent
+  projectToken: 'wc_7Qk2mZp9Ld4Xr8Ts1Vb6',   // omit for the default project
 });
 
 client.on('delta', ({ text }) => process.stdout.write(text));
@@ -191,8 +198,8 @@ import { createWebchatHub } from 'webchat-sdk';
 
 const hub = createWebchatHub({
   agents: [
-    { id: 'support', url: 'https://support-agent.internal', label: 'Support' },
-    { id: 'billing', url: 'https://billing-agent.internal', label: 'Billing' },
+    { id: 'support', url: 'https://support-agent.internal', projectToken: 'wc_…', label: 'Support' },
+    { id: 'billing', url: 'https://billing-agent.internal', projectToken: 'wc_…', label: 'Billing' },
   ],
   defaults: { reconnection: true },
 });
@@ -204,14 +211,15 @@ const billing = hub.client('billing');  // created lazily, connects on first sen
 ```
 
 Clients are created on first use, so registering ten agents does not open ten
-sockets. Each client keeps its own transcript and its own token.
+sockets. `id` is just your key in the hub; `projectToken` is what picks the
+project on the server. Each client keeps its own transcript and its own token.
 
 ## Tokens
 
 The agent mints the token; the SDK never invents one. Two flows:
 
-**Public widget (default).** The SDK POSTs to `${url}/sessions` and uses what
-comes back. Nothing to configure.
+**Public widget (default).** The SDK POSTs to `${url}/sessions` with the
+`projectToken` and uses what comes back. Nothing to configure.
 
 **Backend-minted.** Set `WEBCHAT_ISSUE_KEY` on the agent so `/sessions` requires
 a key the browser must not hold, and mint tokens from your own backend:
@@ -219,13 +227,16 @@ a key the browser must not hold, and mint tokens from your own backend:
 ```ts
 createWebchatClient({
   url: 'https://support-agent.internal',
-  agentId: 'support',
   tokenProvider: async () => {
     const response = await fetch('/api/chat-token', { method: 'POST' });
-    return response.json();       // { token, sessionId?, expiresAt? }
+    return response.json();       // { token, sessionId?, expiresAt?, agentId? }
   },
 });
 ```
+
+Your backend calls the agent's `POST /sessions` itself, with the project token
+in the body and `x-webchat-key` in the headers — that way the issue key never
+reaches the browser.
 
 The provider is called again on every reconnect attempt, so an expired token is
 replaced transparently — the SDK drops a token the agent rejected and asks for a
@@ -247,8 +258,8 @@ does not surface is still available.
 | Option | Default | Purpose |
 |---|---|---|
 | `url` | — | Base URL of the agent container (required) |
-| `agentId` | — | Which project (agent) on the server to talk to — sent to `POST /sessions`; a token for another agent raises `agent_mismatch`. Omit for the server's default project. |
-| `token` | — | A token you already hold |
+| `projectToken` | — | The project's public embed token (24 characters, `wc_…`), from the Chat Studio — sent to `POST /sessions`. Omit for the server's default project. |
+| `token` | — | A session token you already hold |
 | `tokenProvider` | POST `${url}/sessions` | How to obtain/refresh tokens |
 | `sessionId` | — | Resume an existing conversation |
 | `socketPath` | `/webchat` | socket.io path the agent serves |
@@ -261,7 +272,8 @@ does not surface is still available.
 
 Methods: `connect()`, `send(text)` → resolves with the finished assistant
 message, `cancel()`, `reset()`, `disconnect()`, `destroy()`.
-Properties: `status`, `info` (the handshake), `agentId`, `sessionId`, `messages`.
+Properties: `status`, `info` (the handshake), `agentId` (the project the agent
+identified itself as), `sessionId`, `messages`.
 
 Events (`client.on(name, handler)` returns an unsubscribe function):
 

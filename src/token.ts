@@ -12,7 +12,7 @@ export function createDefaultTokenProvider(options: {
   headers?: Record<string, string>;
   fetchImpl?: typeof globalThis.fetch;
 }): TokenProvider {
-  return async ({ url, sessionId, agentId, userId }) => {
+  return async ({ url, sessionId, projectToken, userId }) => {
     const fetchImpl = options.fetchImpl ?? globalThis.fetch;
     if (typeof fetchImpl !== 'function') {
       throw new WebchatError(
@@ -27,11 +27,11 @@ export function createDefaultTokenProvider(options: {
       response = await fetchImpl(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', ...options.headers },
-        // `agentId` selects the project when one server hosts several agents
-        // (the Chat Studio); omitting it means the server's default project.
+        // `projectToken` selects the project when one server hosts several
+        // agents (the Chat Studio); omitting it means the default project.
         body: JSON.stringify({
           ...(sessionId ? { sessionId } : {}),
-          ...(agentId ? { agentId } : {}),
+          ...(projectToken ? { projectToken } : {}),
           ...(userId ? { userId } : {}),
         }),
       });

@@ -53,14 +53,15 @@ export interface TokenGrant {
   token: string;
   sessionId?: string;
   expiresAt?: string;
+  /** The project the server minted this token for. */
   agentId?: string;
   agentName?: string;
   webchat?: WebchatSettings;
 }
 
 export type TokenProvider = (context: {
-  /** Agent this token is for, as configured on the client. */
-  agentId?: string;
+  /** Project token this session is for, as configured on the client. */
+  projectToken?: string;
   /** Base URL of the agent. */
   url: string;
   /** Session to resume, when the caller asked for one. */
@@ -103,11 +104,13 @@ export interface WebchatClientOptions {
   /** Base URL of the ai-agent instance, e.g. https://support-agent.internal. */
   url: string;
   /**
-   * Agent id you expect to be talking to. When set, a token minted by a
-   * different agent is rejected before any message is sent.
+   * The project's public embed token, copied from the Chat Studio. It selects
+   * which project on the server answers; omit it for the server's default
+   * project. Safe to put in a page — it identifies a project, it does not
+   * authorise anything on its own.
    */
-  agentId?: string;
-  /** A token you already have (minted by your backend). */
+  projectToken?: string;
+  /** A session token you already have (minted by your backend). */
   token?: string;
   /**
    * How to obtain a token. Defaults to POSTing to `${url}/sessions`, which is

@@ -193,7 +193,12 @@ function visitorId(): string {
  * Drop-in chat widget: one script tag, one call, a working chat panel.
  *
  *   <script src="webchatsdk.js"></script>
- *   <script>initWebchat('https://support-agent.example.com');</script>
+ *   <script>
+ *     initWebchat({ url: 'https://support-agent.example.com', projectToken: 'wc_…' });
+ *   </script>
+ *
+ * `projectToken` is the project's public embed token, copied from the Chat
+ * Studio; leave it out to talk to the server's default project.
  *
  * Presentation (name, avatar, colours, greetings, privacy notice, ...) comes
  * from the agent's Chat Studio via GET /widget/config; anything passed in
@@ -214,7 +219,7 @@ export function initWebchat(
     throw new Error('initWebchat() needs a browser DOM. Use createWebchatClient() in Node.');
   }
   if (!options.url) {
-    throw new Error('initWebchat() needs the agent URL, e.g. initWebchat("http://localhost:3210").');
+    throw new Error('initWebchat() needs the agent URL, e.g. initWebchat({ url: "http://localhost:3210", projectToken: "wc_…" }).');
   }
 
   const target =
@@ -242,7 +247,7 @@ export function initWebchat(
 
   // ── DOM ────────────────────────────────────────────────────────────────────
   const host = element('div');
-  host.setAttribute('data-webchat', options.agentId ?? 'agent');
+  host.setAttribute('data-webchat', options.projectToken ?? 'agent');
   (target ?? document.body).append(host);
   const shadow = host.attachShadow({ mode: 'open' });
 
@@ -334,7 +339,7 @@ export function initWebchat(
 
   // The storage namespace is per agent; until the config tells us the agent id
   // (default project) we use whatever the embed said.
-  let storageBase = `webchat:${options.storageKey ?? options.agentId ?? 'default'}`;
+  let storageBase = `webchat:${options.storageKey ?? options.projectToken ?? 'default'}`;
   const conversationKey = () => `${storageBase}:conversation`;
   const privacyKey = () => `${storageBase}:privacy`;
   const teaserKey = () => `${storageBase}:teaser`;
@@ -688,14 +693,14 @@ export function initWebchat(
   const ready = (async () => {
     if (options.fetchConfig !== false) {
       try {
-        const query = options.agentId ? `?agentId=${encodeURIComponent(options.agentId)}` : '';
+        const query = options.projectToken ? `?projectToken=${encodeURIComponent(options.projectToken)}` : '';
         const response = await (clientOptions.fetch ?? globalThis.fetch)(`${options.url.replace(/\/$/, '')}/widget/config${query}`, {
           headers: clientOptions.headers,
         });
         if (response.ok) {
           const config = (await response.json()) as { agentId?: string; webchat?: WebchatSettings };
           if (config.webchat) settings = mergeSettings(DEFAULT_SETTINGS, config.webchat, options.settings, shortcutOverrides);
-          if (config.agentId && !options.storageKey && !options.agentId) storageBase = `webchat:${config.agentId}`;
+          if (config.agentId && !options.storageKey && !options.projectToken) storageBase = `webchat:${config.agentId}`;
         }
       } catch {
         // Offline or older agent: keep the defaults and overrides.
