@@ -51,6 +51,15 @@ await assert.rejects(() => rejected.connect(), (error) => {
 rejected.destroy();
 console.log('auth        -> forged token rejected');
 
+// Reconnecting must land in the same conversation, whatever happens to the
+// token in between — a re-minted grant carries the session id forward.
+const sessionId = client.sessionId;
+client.disconnect();
+const reconnected = await client.connect();
+assert.equal(reconnected.sessionId, sessionId, 'reconnect resumes the same session');
+assert.ok(reconnected.historyLength > 0, 'the agent still holds the transcript');
+console.log(`reconnect   -> resumed ${sessionId} with ${reconnected.historyLength} messages`);
+
 // The hub drives several agent containers through one object.
 const hub = createWebchatHub({ agents: [{ id: agentId, url, projectToken, label: 'Support' }] });
 const hubClient = await hub.connect(agentId);
