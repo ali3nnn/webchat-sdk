@@ -243,7 +243,6 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     this.removeAllListeners();
   }
 
-
   // ── internals ──────────────────────────────────────────────────────────────
 
   private async openSocket(): Promise<SessionReadyEvent> {
