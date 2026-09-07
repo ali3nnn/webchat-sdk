@@ -145,16 +145,6 @@ export interface WebchatClientOptions {
    * set false to keep the handshake URL free of ids.
    */
   correlationIds?: boolean;
-  /**
-   * Report client-side failures — a token that never arrived, a websocket that
-   * would not open, a reply that timed out here — to the agent, so the
-   * browser's half of a conversation is on the same trace as the server's.
-   *
-   * On by default. It goes to the agent's own origin, the one this widget
-   * already sends every chat message to, and carries the SDK's error codes
-   * rather than anything the visitor typed. Set false to send nothing.
-   */
-  telemetry?: boolean;
 }
 
 export interface WebchatEvents {
