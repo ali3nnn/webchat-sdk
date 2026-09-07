@@ -607,11 +607,16 @@ export function initWebchat(
   });
 
   // ── behaviour ──────────────────────────────────────────────────────────────
+  function showError(error: unknown): void {
+    errorLine.textContent = error instanceof Error ? error.message : String(error);
+    errorLine.hidden = false;
+  }
+
+  // Never before the Studio's settings have arrived: they say which transport
+  // the agent wants, and a socket opened to a host that cannot hold one would
+  // connect and then die.
   function connect(): void {
-    void client.connect().catch((error: unknown) => {
-      errorLine.textContent = error instanceof Error ? error.message : String(error);
-      errorLine.hidden = false;
-    });
+    void configured.then(() => client.connect()).catch(showError);
   }
 
   function open(): void {
@@ -690,7 +695,7 @@ export function initWebchat(
   // ── boot: server settings, then restore, then connect ──────────────────────
   applySettings();
 
-  const ready = (async () => {
+  const configured = (async () => {
     if (options.fetchConfig !== false) {
       try {
         const query = options.projectToken ? `?projectToken=${encodeURIComponent(options.projectToken)}` : '';
@@ -698,9 +703,15 @@ export function initWebchat(
           headers: clientOptions.headers,
         });
         if (response.ok) {
-          const config = (await response.json()) as { agentId?: string; webchat?: WebchatSettings };
+          const config = (await response.json()) as { agentId?: string; webchat?: WebchatSettings; transport?: string };
           if (config.webchat) settings = mergeSettings(DEFAULT_SETTINGS, config.webchat, options.settings, shortcutOverrides);
           if (config.agentId && !options.storageKey && !options.projectToken) storageBase = `webchat:${config.agentId}`;
+          // The embed may pin a transport; otherwise the agent's choice
+          // (WEBCHAT_TRANSPORT) applies, so a deployment can switch without
+          // every site editing its snippet.
+          if (!clientOptions.transport && (config.transport === 'http' || config.transport === 'socket')) {
+            (client as unknown as { options: WebchatClientOptions }).options.transport = config.transport;
+          }
         }
       } catch {
         // Offline or older agent: keep the defaults and overrides.
@@ -709,8 +720,11 @@ export function initWebchat(
     if (destroyed) return;
     applySettings();
     restoreConversation();
-    if ((connectOn ?? 'open') === 'load' || isOpen) connect();
   })();
+  void configured.then(() => {
+    if (destroyed) return;
+    if ((connectOn ?? 'open') === 'load' || isOpen) client.connect().catch(showError);
+  });
 
   return {
     client,
@@ -724,7 +738,6 @@ export function initWebchat(
     destroy() {
       destroyed = true;
       clearTimeout(teaserTimer);
-      void ready;
       client.destroy();
       host.remove();
     },

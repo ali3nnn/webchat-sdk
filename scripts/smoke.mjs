@@ -6,6 +6,8 @@
  *
  * PROJECT_TOKEN picks a specific project (copy it from the Chat Studio's embed
  * snippet); without it the agent answers with its default project.
+ * TRANSPORT=http runs the same checks over POST /chat/stream instead of
+ * socket.io.
  */
 import assert from 'node:assert/strict';
 import { createWebchatClient, createWebchatHub } from '../dist/index.js';
@@ -13,9 +15,11 @@ import { createWebchatClient, createWebchatHub } from '../dist/index.js';
 const url = process.env.AGENT_URL ?? 'http://localhost:3210';
 const agentId = process.env.AGENT_ID ?? 'support';
 const projectToken = process.env.PROJECT_TOKEN;
+const transport = process.env.TRANSPORT === 'http' ? 'http' : 'socket';
+console.log(`transport: ${transport}`);
 
 const events = [];
-const client = createWebchatClient({ url, projectToken });
+const client = createWebchatClient({ url, projectToken, transport });
 client.on('status', (status) => events.push(`status:${status}`));
 client.on('tool', (tool) => events.push(`tool:${tool.name}:${tool.status}`));
 client.on('delta', () => events.push('delta'));
@@ -42,12 +46,16 @@ assert.ok(events.includes('delta'), 'text arrived incrementally');
 assert.ok(events.includes('tool:knowledge_retrieval:started'), 'tool start was reported');
 assert.equal(client.messages.length, 4, 'transcript holds both turns');
 
-// A bad token must be refused by the handshake.
-const rejected = createWebchatClient({ url, projectToken, token: 'not.a-real-token' });
-await assert.rejects(() => rejected.connect(), (error) => {
-  assert.equal(error.code, 'auth_failed');
-  return true;
-});
+// A bad token must be refused: by the handshake on a socket, by the first
+// request over HTTP (which has no handshake to refuse).
+const rejected = createWebchatClient({ url, projectToken, token: 'not.a-real-token', transport });
+await assert.rejects(
+  () => (transport === 'http' ? rejected.connect().then(() => rejected.send('hi')) : rejected.connect()),
+  (error) => {
+    assert.equal(error.code, 'auth_failed');
+    return true;
+  },
+);
 rejected.destroy();
 console.log('auth        -> forged token rejected');
 
@@ -61,7 +69,7 @@ assert.ok(reconnected.historyLength > 0, 'the agent still holds the transcript')
 console.log(`reconnect   -> resumed ${sessionId} with ${reconnected.historyLength} messages`);
 
 // The hub drives several agent containers through one object.
-const hub = createWebchatHub({ agents: [{ id: agentId, url, projectToken, label: 'Support' }] });
+const hub = createWebchatHub({ agents: [{ id: agentId, url, projectToken, label: 'Support' }], defaults: { transport } });
 const hubClient = await hub.connect(agentId);
 assert.equal(hubClient.info?.agentId, ready.agentId);
 console.log(`hub         -> connected ${hub.ids.join(', ')}`);

@@ -56,6 +56,14 @@ export interface TokenGrant {
   /** The project the server minted this token for. */
   agentId?: string;
   agentName?: string;
+  /**
+   * What a socket handshake would report — `POST /sessions` includes them so
+   * the HTTP transport, which has no handshake, can say the same in `ready`.
+   */
+  provider?: string;
+  model?: string;
+  historyLength?: number;
+  protocolVersion?: number;
   webchat?: WebchatSettings;
 }
 
@@ -121,6 +129,16 @@ export interface WebchatClientOptions {
   sessionId?: string;
   /** Stable visitor id (the widget keeps one in localStorage). */
   userId?: string;
+  /**
+   * How to carry the conversation. `socket` (default) keeps a socket.io
+   * connection open; `http` sends one `POST /chat/stream` per message and
+   * reads the reply as Server-Sent Events — no persistent connection, so no
+   * sticky sessions and no websocket support needed of the host, which makes
+   * it the transport for Vercel and other per-request-routed platforms. The
+   * widget takes the agent's preference from GET /widget/config when this is
+   * not set.
+   */
+  transport?: 'socket' | 'http';
   /** socket.io path the agent serves. Defaults to `/webchat`. */
   socketPath?: string;
   /** Connect as soon as the client is created. Defaults to false. */

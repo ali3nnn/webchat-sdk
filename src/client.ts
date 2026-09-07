@@ -1,6 +1,5 @@
-import { io, type Socket } from 'socket.io-client';
 import { Emitter } from './emitter.js';
-import { WebchatError, isAuthFailure, toWebchatError } from './errors.js';
+import { WebchatError } from './errors.js';
 import {
   PROTOCOL_VERSION,
   type ChatCompleteEvent,
@@ -8,11 +7,12 @@ import {
   type ChatErrorEvent,
   type ChatStartedEvent,
   type ChatToolEvent,
-  type ClientToServerEvents,
-  type ServerToClientEvents,
   type SessionReadyEvent,
 } from './protocol.js';
 import { createDefaultTokenProvider } from './token.js';
+import { HttpTransport } from './transport-http.js';
+import { SocketTransport } from './transport-socket.js';
+import type { ServerEvent, ServerEventName, Transport, TransportContext } from './transport.js';
 import type {
   TokenGrant,
   TokenProvider,
@@ -21,8 +21,6 @@ import type {
   WebchatMessage,
   WebchatStatus,
 } from './types.js';
-
-type AgentSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 interface PendingTurn {
   resolve: (message: WebchatMessage) => void;
@@ -63,15 +61,17 @@ function randomId(): string {
 /**
  * One conversation with one ai-agent instance.
  *
- * The agent mints a session token over HTTP; this client presents it in the
- * socket.io handshake and then speaks the protocol in ./protocol.ts. Point
- * several clients at several agent containers — the transport is identical, only
- * the URL and token differ. `WebchatHub` does exactly that for you.
+ * The agent mints a session token over HTTP; this client presents it to the
+ * agent and then speaks the protocol in ./protocol.ts — over socket.io, or over
+ * one HTTP request per turn (`transport: 'http'`), the transcript and events
+ * being the same either way. Point several clients at several agent
+ * containers — only the URL and token differ. `WebchatHub` does exactly that
+ * for you.
  */
 export class WebchatClient extends Emitter<WebchatEvents> {
   private readonly options: WebchatClientOptions;
   private readonly tokenProvider: TokenProvider;
-  private socket: AgentSocket | undefined;
+  private transport: Transport | undefined;
   private grant: TokenGrant | undefined;
   /** When `grant` was obtained, so its remaining life can be judged. */
   private grantMintedAt = 0;
@@ -134,10 +134,10 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     if (this.destroyed) {
       throw new WebchatError('This client has been destroyed.', 'connect_failed');
     }
-    if (this.session && this.socket?.connected) return this.session;
+    if (this.session && this.transport?.connected) return this.session;
     if (this.connectPromise) return this.connectPromise;
 
-    this.connectPromise = this.openSocket().finally(() => {
+    this.connectPromise = this.open().finally(() => {
       this.connectPromise = undefined;
     });
     return this.connectPromise;
@@ -151,8 +151,8 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     }
 
     await this.connect();
-    const socket = this.socket;
-    if (!socket) {
+    const transport = this.transport;
+    if (!transport) {
       throw new WebchatError('Not connected.', 'disconnected', { agentId: this.agentId });
     }
 
@@ -179,18 +179,18 @@ export class WebchatClient extends Emitter<WebchatEvents> {
       }, this.options.replyTimeoutMs ?? 120_000);
 
       this.pending.set(id, { resolve, reject, timer });
-      socket.emit('chat:send', { id, text: trimmed });
+      transport.send({ id, text: trimmed });
     });
   }
 
   /** Asks the agent to stop the turn in progress. */
   cancel(): void {
-    this.socket?.emit('chat:cancel', {});
+    this.transport?.cancel({});
   }
 
   /** Clears the conversation on the agent and locally. */
   reset(): void {
-    this.socket?.emit('chat:reset');
+    this.transport?.reset();
     this.transcript.length = 0;
     this.failPending(new WebchatError('The conversation was reset.', 'cancelled'));
   }
@@ -214,7 +214,7 @@ export class WebchatClient extends Emitter<WebchatEvents> {
       message.feedback = rating;
       this.emit('message', { ...message, tools: [...message.tools] });
     }
-    this.socket?.emit('chat:feedback', { messageId, rating });
+    this.transport?.feedback({ messageId, rating });
   }
 
   /**
@@ -230,8 +230,8 @@ export class WebchatClient extends Emitter<WebchatEvents> {
 
   disconnect(): void {
     this.failPending(new WebchatError('The client disconnected.', 'disconnected'));
-    this.socket?.disconnect();
-    this.socket = undefined;
+    this.transport?.disconnect();
+    this.transport = undefined;
     this.session = undefined;
     this.setStatus('disconnected');
   }
@@ -245,102 +245,85 @@ export class WebchatClient extends Emitter<WebchatEvents> {
 
   // ── internals ──────────────────────────────────────────────────────────────
 
-  private async openSocket(): Promise<SessionReadyEvent> {
+  private async open(): Promise<SessionReadyEvent> {
     this.setStatus('connecting');
-    // Fail fast with a clear error if the token cannot be obtained at all.
-    const grant = await this.resolveToken();
-
-    const socket: AgentSocket = io(this.options.url, {
-      path: this.options.socketPath ?? '/webchat',
-      // Correlation only. The handshake URL is otherwise identical for every
-      // visitor, which leaves a connection impossible to find again in an
-      // access log or a HAR file. The agent authenticates the signed token in
-      // the socket.io auth payload and never reads these.
-      query: this.correlationQuery(grant),
-      transports: this.options.transports ?? ['websocket', 'polling'],
-      reconnection: this.options.reconnection ?? true,
-      reconnectionAttempts: this.options.reconnectionAttempts ?? Infinity,
-      autoConnect: false,
-      // socket.io calls this before every (re)connect attempt, so an expired
-      // token is replaced transparently on reconnection.
-      auth: (cb: (data: Record<string, unknown>) => void) => {
-        this.resolveToken().then(
-          (grant) => cb({ token: grant.token }),
-          () => cb({}),
+    const transport = this.createTransport();
+    this.transport = transport;
+    try {
+      const event = await transport.connect();
+      // The handshake handler below may have hung up on a mismatch.
+      if (!this.session || this.transport !== transport) {
+        throw new WebchatError(
+          `Connected to agent "${event.agentId}" but "${this.grant?.agentId ?? 'another'}" was expected.`,
+          'agent_mismatch',
+          { agentId: event.agentId },
         );
-      },
-    });
-
-    this.socket = socket;
-    this.bind(socket);
-
-    return new Promise<SessionReadyEvent>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        cleanup();
-        socket.close();
-        reject(
-          new WebchatError(
-            `Timed out connecting to ${this.options.url}.`,
-            'timeout',
-            { agentId: this.agentId },
-          ),
-        );
-      }, this.options.connectTimeoutMs ?? 30_000);
-
-      const onReady = (event: SessionReadyEvent) => {
-        cleanup();
-        resolve(event);
-      };
-      const onError = (error: Error) => {
-        const failure = toWebchatError(error.message, this.agentId ?? 'unknown');
-        // An auth failure never fixes itself by retrying with the same token.
-        if (isAuthFailure(error.message)) {
-          this.grant = undefined;
-          cleanup();
-          socket.close();
-          reject(failure);
-        }
-      };
-
-      const cleanup = () => {
-        clearTimeout(timer);
-        socket.off('session:ready', onReady);
-        socket.off('connect_error', onError);
-      };
-
-      socket.on('session:ready', onReady);
-      socket.on('connect_error', onError);
-      socket.connect();
-    });
+      }
+      return event;
+    } catch (error) {
+      if (this.transport === transport) {
+        transport.disconnect();
+        this.transport = undefined;
+        this.setStatus('disconnected');
+      }
+      throw error;
+    }
   }
 
   /**
-   * Non-secret ids for the handshake URL. Anyone can put anything here, so the
-   * agent trusts none of it — it exists so proxies, CDNs and browser HARs, which
-   * see only the URL, can say which session and project a socket belonged to.
-   *
-   * Spell the names out: `sid`, `t`, `j`, `b64`, `EIO` and `transport` belong to
-   * Engine.IO. A `sid` of our own is read as its polling session id and the
-   * handshake is refused with "Session ID unknown".
+   * The transport is chosen when the conversation opens, not when the client
+   * is made: the widget learns the agent's preference from GET /widget/config
+   * in between, so a deployment can move to HTTP without every embed changing.
    */
-  private correlationQuery(grant: TokenGrant): Record<string, string> | undefined {
-    if (this.options.correlationIds === false) return undefined;
-    const query: Record<string, string> = {};
-    const sessionId = grant.sessionId ?? this.sessionId;
-    const agentId = grant.agentId ?? this.agentId;
-    if (sessionId) query.sessionId = sessionId;
-    if (agentId) query.agentId = agentId;
-    return Object.keys(query).length > 0 ? query : undefined;
+  private createTransport(): Transport {
+    // Called as a plain function: a browser's `fetch` refuses to run as a
+    // method of anything but `window` ("Illegal invocation").
+    const fetchImpl = this.options.fetch ?? globalThis.fetch;
+    const ctx: TransportContext = {
+      url: this.options.url,
+      token: (options) => this.resolveToken(options),
+      dropToken: () => {
+        this.grant = undefined;
+      },
+      sessionId: () => this.sessionId,
+      agentId: () => this.agentId,
+      fetch: (input, init) => fetchImpl(input, init),
+      headers: this.options.headers,
+      handlers: {
+        onEvent: (name, event) => this.handle(name, event),
+        onStatus: (status) => this.setStatus(status),
+        onDisconnected: (reason) => {
+          this.session = undefined;
+          this.setStatus(reason === 'io client disconnect' ? 'disconnected' : 'reconnecting');
+          this.failPending(
+            new WebchatError(`Disconnected from the agent (${reason}).`, 'disconnected', {
+              agentId: this.agentId,
+            }),
+          );
+        },
+        onError: (error, replyTo) => {
+          this.emit('error', error);
+          const turn = replyTo ? this.pending.get(replyTo) : undefined;
+          if (turn && replyTo) {
+            clearTimeout(turn.timer);
+            this.pending.delete(replyTo);
+            turn.reject(error);
+          }
+        },
+      },
+    };
+    return this.options.transport === 'http' ? new HttpTransport(ctx) : new SocketTransport(this.options, ctx);
   }
 
-  private async resolveToken(): Promise<TokenGrant> {
-    if (this.grant?.token && !isSpent(this.grant, this.grantMintedAt)) return this.grant;
+  private async resolveToken(options: { fresh?: boolean; sessionId?: string } = {}): Promise<TokenGrant> {
+    const cached = this.grant?.token && !isSpent(this.grant, this.grantMintedAt) ? this.grant : undefined;
+    if (cached && !options.fresh) return cached;
 
     try {
       const grant = await this.tokenProvider({
         projectToken: this.options.projectToken,
         url: this.options.url,
-        sessionId: this.sessionId,
+        sessionId: options.sessionId ?? this.sessionId,
         userId: this.options.userId,
       });
       this.grant = grant;
@@ -348,6 +331,8 @@ export class WebchatClient extends Emitter<WebchatEvents> {
       if (grant.sessionId) this.knownSessionId = grant.sessionId;
       return grant;
     } catch (error) {
+      // A refresh that fails leaves a usable grant in hand; a first mint does not.
+      if (cached) return cached;
       const failure =
         error instanceof WebchatError
           ? error
@@ -360,142 +345,145 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     }
   }
 
-  private bind(socket: AgentSocket): void {
-    socket.on('session:ready', (event) => {
-      this.session = event;
-      this.knownSessionId = event.sessionId;
-      this.setStatus('connected');
+  /** One protocol event from the agent, whichever transport carried it. */
+  private handle<K extends ServerEventName>(name: K, event: ServerEvent<K>): void {
+    switch (name) {
+      case 'session:ready':
+        this.onReady(event as SessionReadyEvent);
+        break;
+      case 'chat:started':
+        this.onStarted(event as ChatStartedEvent);
+        break;
+      case 'chat:delta':
+        this.onDelta(event as ChatDeltaEvent);
+        break;
+      case 'chat:tool':
+        this.onTool(event as ChatToolEvent);
+        break;
+      case 'chat:complete':
+        this.onComplete(event as ChatCompleteEvent);
+        break;
+      case 'chat:error':
+        this.onError(event as ChatErrorEvent);
+        break;
+      default:
+        break;
+    }
+  }
 
-      if (event.protocolVersion !== PROTOCOL_VERSION) {
-        this.emit(
-          'error',
-          new WebchatError(
-            `Agent speaks protocol v${event.protocolVersion}, this SDK speaks v${PROTOCOL_VERSION}.`,
-            'protocol_mismatch',
-            { agentId: event.agentId },
-          ),
-        );
-      }
-      // The grant says which project the token was minted for; a socket that
-      // reports another one is not the agent this token belongs to.
-      const expected = this.grant?.agentId;
-      if (expected && expected !== event.agentId) {
-        this.emit(
-          'error',
-          new WebchatError(
-            `Connected to agent "${event.agentId}" but "${expected}" was expected.`,
-            'agent_mismatch',
-            { agentId: event.agentId },
-          ),
-        );
-        this.disconnect();
-        return;
-      }
-      this.emit('ready', event);
-    });
+  private onReady(event: SessionReadyEvent): void {
+    this.session = event;
+    this.knownSessionId = event.sessionId;
+    this.setStatus('connected');
 
-    socket.on('chat:started', (event: ChatStartedEvent) => {
-      const turn = this.pending.get(event.replyTo);
-      if (turn) turn.messageId = event.messageId;
-      this.upsert({
-        id: event.messageId,
-        role: 'assistant',
-        text: '',
-        createdAt: new Date().toISOString(),
-        status: 'streaming',
-        tools: [],
-      });
-    });
-
-    socket.on('chat:delta', (event: ChatDeltaEvent) => {
-      const message = this.find(event.messageId);
-      if (!message) return;
-      message.text += event.text;
-      this.emit('delta', { messageId: event.messageId, text: event.text });
-      this.emit('message', { ...message, tools: [...message.tools] });
-    });
-
-    socket.on('chat:tool', (event: ChatToolEvent) => {
-      const message = this.find(event.messageId);
-      if (!message) return;
-      const existing = message.tools.find((tool) => tool.toolCallId === event.toolCallId);
-      const activity = {
-        toolCallId: event.toolCallId,
-        name: event.name,
-        status: event.status,
-        input: event.input ?? existing?.input,
-        output: event.output ?? existing?.output,
-        error: event.error ?? existing?.error,
-      };
-      if (existing) Object.assign(existing, activity);
-      else message.tools.push(activity);
-
-      this.emit('tool', { ...activity, messageId: event.messageId });
-      this.emit('message', { ...message, tools: [...message.tools] });
-    });
-
-    socket.on('chat:complete', (event: ChatCompleteEvent) => {
-      const message = this.find(event.messageId);
-      if (message) {
-        // Trust the server's accumulated text over the deltas we stitched.
-        message.text = event.text || message.text;
-        message.status = 'complete';
-        message.usage = event.usage;
-        this.emit('message', { ...message, tools: [...message.tools] });
-        this.emit('complete', { ...message, tools: [...message.tools] });
-      }
-
-      const turn = this.pending.get(event.replyTo);
-      if (turn && message) {
-        clearTimeout(turn.timer);
-        this.pending.delete(event.replyTo);
-        turn.resolve({ ...message, tools: [...message.tools] });
-      }
-    });
-
-    socket.on('chat:error', (event: ChatErrorEvent) => {
-      const message = event.messageId ? this.find(event.messageId) : undefined;
-      if (message) {
-        message.status = 'error';
-        message.error = event.message;
-        this.emit('message', { ...message, tools: [...message.tools] });
-      }
-
-      const code = event.code === 'agent_error' ? 'agent_error' : event.code;
-      const failure = new WebchatError(event.message, code, {
-        agentId: this.agentId,
-        messageId: event.messageId,
-      });
-      this.emit('error', failure);
-
-      const turn = event.replyTo ? this.pending.get(event.replyTo) : undefined;
-      if (turn && event.replyTo) {
-        clearTimeout(turn.timer);
-        this.pending.delete(event.replyTo);
-        turn.reject(failure);
-      }
-    });
-
-    socket.on('connect_error', (error) => {
-      const failure = toWebchatError(error.message, this.agentId ?? 'unknown');
-      if (isAuthFailure(error.message)) {
-        // Drop the token so the next handshake asks for a fresh one.
-        this.grant = undefined;
-      }
-      this.emit('error', failure);
-    });
-
-    socket.io.on('reconnect_attempt', () => this.setStatus('reconnecting'));
-
-    socket.on('disconnect', (reason) => {
-      this.session = undefined;
-      this.setStatus(reason === 'io client disconnect' ? 'disconnected' : 'reconnecting');
-      this.failPending(
-        new WebchatError(`Disconnected from the agent (${reason}).`, 'disconnected', {
-          agentId: this.agentId,
-        }),
+    if (event.protocolVersion !== PROTOCOL_VERSION) {
+      this.emit(
+        'error',
+        new WebchatError(
+          `Agent speaks protocol v${event.protocolVersion}, this SDK speaks v${PROTOCOL_VERSION}.`,
+          'protocol_mismatch',
+          { agentId: event.agentId },
+        ),
       );
+    }
+    // The grant says which project the token was minted for; an agent that
+    // reports another one is not the agent this token belongs to.
+    const expected = this.grant?.agentId;
+    if (expected && event.agentId && expected !== event.agentId) {
+      this.emit(
+        'error',
+        new WebchatError(
+          `Connected to agent "${event.agentId}" but "${expected}" was expected.`,
+          'agent_mismatch',
+          { agentId: event.agentId },
+        ),
+      );
+      this.disconnect();
+      return;
+    }
+    this.emit('ready', event);
+  }
+
+  private onStarted(event: ChatStartedEvent): void {
+    const turn = this.pending.get(event.replyTo);
+    if (turn) turn.messageId = event.messageId;
+    this.upsert({
+      id: event.messageId,
+      role: 'assistant',
+      text: '',
+      createdAt: new Date().toISOString(),
+      status: 'streaming',
+      tools: [],
     });
+  }
+
+  private onDelta(event: ChatDeltaEvent): void {
+    const message = this.find(event.messageId);
+    if (!message) return;
+    message.text += event.text;
+    this.emit('delta', { messageId: event.messageId, text: event.text });
+    this.emit('message', { ...message, tools: [...message.tools] });
+  }
+
+  private onTool(event: ChatToolEvent): void {
+    const message = this.find(event.messageId);
+    if (!message) return;
+    const existing = message.tools.find((tool) => tool.toolCallId === event.toolCallId);
+    const activity = {
+      toolCallId: event.toolCallId,
+      name: event.name,
+      status: event.status,
+      input: event.input ?? existing?.input,
+      output: event.output ?? existing?.output,
+      error: event.error ?? existing?.error,
+    };
+    if (existing) Object.assign(existing, activity);
+    else message.tools.push(activity);
+
+    this.emit('tool', { ...activity, messageId: event.messageId });
+    this.emit('message', { ...message, tools: [...message.tools] });
+  }
+
+  private onComplete(event: ChatCompleteEvent): void {
+    const message = this.find(event.messageId);
+    if (message) {
+      // Trust the server's accumulated text over the deltas we stitched.
+      message.text = event.text || message.text;
+      message.status = 'complete';
+      message.usage = event.usage;
+      this.emit('message', { ...message, tools: [...message.tools] });
+      this.emit('complete', { ...message, tools: [...message.tools] });
+    }
+
+    const turn = this.pending.get(event.replyTo);
+    if (turn && message) {
+      clearTimeout(turn.timer);
+      this.pending.delete(event.replyTo);
+      turn.resolve({ ...message, tools: [...message.tools] });
+    }
+  }
+
+  private onError(event: ChatErrorEvent): void {
+    const message = event.messageId ? this.find(event.messageId) : undefined;
+    if (message) {
+      message.status = 'error';
+      message.error = event.message;
+      this.emit('message', { ...message, tools: [...message.tools] });
+    }
+
+    const code = event.code === 'agent_error' ? 'agent_error' : event.code;
+    const failure = new WebchatError(event.message, code, {
+      agentId: this.agentId,
+      messageId: event.messageId,
+    });
+    this.emit('error', failure);
+
+    const turn = event.replyTo ? this.pending.get(event.replyTo) : undefined;
+    if (turn && event.replyTo) {
+      clearTimeout(turn.timer);
+      this.pending.delete(event.replyTo);
+      turn.reject(failure);
+    }
   }
 
   private find(messageId: string): WebchatMessage | undefined {
