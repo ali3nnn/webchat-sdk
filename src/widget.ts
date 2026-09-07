@@ -1,4 +1,5 @@
 import { WebchatClient } from './client.js';
+import { renderMarkdown } from './markdown.js';
 import type {
   WebchatClientOptions,
   WebchatMessage,
@@ -502,8 +503,14 @@ export function initWebchat(
 
     if (message.status === 'streaming' && message.text === '') {
       // Nothing to show yet — the agent is thinking or running a tool.
+      entry.bubble.classList.remove('md');
       entry.bubble.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+    } else if (message.error === undefined && message.role === 'assistant') {
+      // Agents answer in Markdown; the user's own text stays literal.
+      entry.bubble.classList.add('md');
+      entry.bubble.replaceChildren(renderMarkdown(message.text));
     } else {
+      entry.bubble.classList.remove('md');
       entry.bubble.textContent = message.error ?? message.text;
     }
 

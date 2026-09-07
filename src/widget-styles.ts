@@ -100,6 +100,19 @@ export const WIDGET_CSS = `
 .msg[data-role="user"]:last-child .bubble { border-bottom-right-radius: 6px; }
 .root[data-bubbles="wide"] .bubble { border-radius: 10px; padding: 12px 16px; }
 .msg[data-status="error"] .bubble { background: #ffe3e3; color: #b02525; }
+
+/* Rendered Markdown brings its own blocks, so the pre-wrap fallback steps aside. */
+.bubble.md { white-space: normal; }
+.bubble.md > :first-child { margin-top: 0; }
+.bubble.md > :last-child { margin-bottom: 0; }
+.bubble.md p { margin: 0 0 8px; }
+.bubble.md h3, .bubble.md h4, .bubble.md h5 { margin: 12px 0 6px; font-size: 14px; font-weight: 600; }
+.bubble.md ul, .bubble.md ol { margin: 0 0 8px; padding-left: 20px; }
+.bubble.md li { margin: 2px 0; }
+.bubble.md a { color: inherit; text-decoration: underline; }
+.bubble.md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; background: rgba(0, 0, 0, 0.06); border-radius: 4px; padding: 1px 4px; }
+.bubble.md pre { margin: 0 0 8px; padding: 10px 12px; border-radius: 8px; background: rgba(0, 0, 0, 0.06); overflow-x: auto; }
+.bubble.md pre code { background: none; padding: 0; white-space: pre; }
 .meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--wc-muted); padding: 0 4px; min-height: 16px; }
 .msg[data-role="user"] .meta { justify-content: flex-end; }
 
