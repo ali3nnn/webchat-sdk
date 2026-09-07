@@ -376,3 +376,29 @@ library. Anything that needs hosting is the agent's job.
   token minted by one replica is rejected by the next.
 - Set `WEBCHAT_ALLOWED_ORIGINS` on the agent to your site's origins in
   production; the default `*` is a development convenience.
+
+## Releasing
+
+The version in `package.json` is the release. Bump it, merge it to `main`, and
+[the release workflow](.github/workflows/release.yml) tags that commit, builds
+the browser bundle and publishes a GitHub Release with `webchatsdk.js` attached
+— which is what `releases/latest/download/webchatsdk.js` serves, so every embed
+that points there picks it up.
+
+From a branch, bump the version as part of the change and let the merge release
+it. Do not tag: the workflow tags the merge commit, and a tag made here would
+point at the branch commit instead.
+
+```bash
+npm version minor --no-git-tag-version   # or major / patch
+git commit -am "What changed, 0.4.0"
+```
+
+Straight to main, tagging locally is fine — it is the same commit either way:
+
+```bash
+npm version minor && git push --follow-tags
+```
+
+A commit that leaves the version alone finds it already released and stops
+without cutting anything, so `main` can move as often as it likes.
