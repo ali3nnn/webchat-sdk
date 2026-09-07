@@ -24,7 +24,11 @@ see [Hosting the bundle yourself](#hosting-the-bundle-yourself).) The widget ren
 panel inside a **shadow root** — the host page's CSS cannot reach in and the
 widget cannot leak styles out — and handles the handshake for you: ask the agent
 for a session token over HTTP, connect over **socket.io** with that token, then
-stream the reply and the tool activity into the panel.
+stream the reply and the tool activity into the panel. On a host that cannot
+hold a socket open (Vercel, and anything else that routes every request on its
+own) the agent says so in its config and the widget talks **plain HTTP**
+instead — one `POST /chat/stream` per message, the reply read as Server-Sent
+Events — with the same panel and the same events.
 
 Underneath sits a headless client you can drive from your own UI or from Node
 (see [Headless usage](#headless-usage)).
@@ -288,6 +292,7 @@ does not surface is still available.
 | `token` | — | A session token you already hold |
 | `tokenProvider` | POST `${url}/sessions` | How to obtain/refresh tokens |
 | `sessionId` | — | Resume an existing conversation |
+| `transport` | from `GET /widget/config`, else `socket` | `socket` keeps a socket.io connection; `http` sends one `POST /chat/stream` per message and reads SSE — no persistent connection, no sticky sessions, the transport for Vercel. The widget takes the agent's `WEBCHAT_TRANSPORT` unless this is set; a headless client defaults to `socket`. |
 | `socketPath` | `/webchat` | socket.io path the agent serves |
 | `autoConnect` | `false` | Connect on construction |
 | `reconnection` / `reconnectionAttempts` | `true` / `Infinity` | socket.io reconnection |
@@ -342,6 +347,44 @@ raises `protocol_mismatch` when they differ.
 One turn at a time per socket: sending while the agent is still answering is
 rejected with `busy` rather than interleaved.
 
+### Over HTTP
+
+`transport: 'http'` carries the same protocol without a connection. `connect()`
+mints the token — `POST /sessions` also reports the agent's name, provider,
+model and history length, so `ready` says what a socket handshake would — and
+every `send()` is one request:
+
+```
+POST /chat/stream           Authorization: Bearer <token>
+{ "id": "m-1", "message": "…" }
+
+event: session   { sessionId, projectId, protocolVersion }
+event: started   { messageId, replyTo }
+event: tool      { messageId, toolCallId, name, status, input?, output?, error? }
+event: delta     { messageId, text }
+event: done      { sessionId, messageId, replyTo, text, finishReason, usage }
+event: error     { code, message, messageId?, replyTo? }
+```
+
+The frames are the socket events minus their `chat:` prefix and carry the same
+payloads, so the transcript and the `message` / `delta` / `tool` / `complete`
+events come out identical. `cancel()` aborts the request, which aborts the turn
+on the agent; `reset()` is `DELETE /sessions/:id`; `feedback()` is
+`POST /chat/feedback`. Identity travels in the bearer token's signed payload,
+never in the body — a token bound to one conversation cannot be pointed at
+another.
+
+What changes: `status` goes `connecting` → `connected` once and stays there
+(there is nothing to reconnect), `busy` is answered locally when a turn is
+already in flight, and a host that cuts a response before `done` — a
+serverless max duration, a proxy — leaves what was streamed on the message and
+fails the turn with `agent_error`.
+
+The widget picks this up from the agent: `GET /widget/config` reports the
+agent's `WEBCHAT_TRANSPORT`, and the widget follows it unless the embed pins
+`transport` itself. So a deployment moving to Vercel flips one variable and
+every page already carrying the snippet follows on its next load.
+
 ## Try it
 
 Start an agent (it prints the snippet to paste) and open any page:
@@ -359,10 +402,12 @@ With an agent running on `:3210`:
 
 ```bash
 AGENT_URL=http://localhost:3210 npm run smoke
+TRANSPORT=http AGENT_URL=http://localhost:3210 npm run smoke
 ```
 
 It checks the handshake, small talk, a retrieval turn with tool events, that a
-forged token is refused, and that the hub connects.
+forged token is refused, that a reconnect resumes the same conversation, and
+that the hub connects — over socket.io, then the same checks over HTTP.
 
 This package ships no Dockerfile and no demo server on purpose — it is a
 library. Anything that needs hosting is the agent's job.
@@ -371,7 +416,9 @@ library. Anything that needs hosting is the agent's job.
 
 - A conversation lives in memory on the container the socket is attached to.
   Behind a load balancer, enable sticky sessions, or give the agents the
-  socket.io Redis adapter and a shared session store.
+  socket.io Redis adapter and a shared session store — or use
+  `transport: 'http'`, which needs neither: every turn is one request, and the
+  agent rehydrates the conversation from its database wherever it lands.
 - Every replica of one agent must share `WEBCHAT_TOKEN_SECRET`, otherwise a
   token minted by one replica is rejected by the next.
 - Set `WEBCHAT_ALLOWED_ORIGINS` on the agent to your site's origins in

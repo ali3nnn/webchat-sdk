@@ -91,3 +91,39 @@ export interface ClientToServerEvents {
   'chat:feedback': (event: ChatFeedbackEvent) => void;
 }
 
+
+/**
+ * The same conversation over plain HTTP, for hosts that cannot hold a socket
+ * open or keep a visitor's consecutive requests on one instance (Vercel and
+ * the like). One request per turn: `POST /chat/stream` takes what `chat:send`
+ * carries and answers with Server-Sent Events named like the socket events
+ * minus their `chat:` prefix — so the SDK assembles a reply from either
+ * transport with the same code.
+ *
+ *   POST /chat/stream  { message, id?, sessionId?, projectToken? | projectId?, userId? }
+ *
+ *   event: session   { sessionId, projectId, protocolVersion }   first, before the model runs
+ *   event: started   ChatStartedEvent
+ *   event: delta     ChatDeltaEvent
+ *   event: tool      ChatToolEvent
+ *   event: done      ChatCompleteEvent & { sessionId }           terminal
+ *   event: error     ChatErrorEvent                              terminal
+ *
+ * Identity travels the same way as on the socket: a session token from
+ * `POST /sessions` in `Authorization: Bearer …`, whose signed payload names
+ * the session, project and visitor. Without one, the body's selectors are
+ * used as given — the documented curl-from-anywhere path.
+ *
+ * The rest of the socket vocabulary maps onto one request each:
+ *
+ *   chat:cancel    → abort the in-flight request (the server aborts the turn)
+ *   chat:reset     → DELETE /sessions/:id
+ *   chat:feedback  → POST /chat/feedback  { messageId, rating }
+ */
+export type SseEventName = 'session' | 'started' | 'delta' | 'tool' | 'done' | 'error';
+
+export interface SessionFrame {
+  sessionId: string;
+  projectId: string;
+  protocolVersion: number;
+}
