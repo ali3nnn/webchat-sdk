@@ -146,8 +146,10 @@ Studio and served at `GET /widget/config?projectToken=…`: agent name and avata
 colours (launcher, bubbles, background, header), bubble style, greetings,
 teaser message, AI disclaimer, input/send texts, timestamps, privacy notice,
 persistence across pages, the "New chat" button and thumbs up/down feedback.
-The widget fetches them before connecting; `settings` overrides any of them
-per embed:
+The widget fetches them before connecting and stays invisible until they land
+(at most 1.2s), so the launcher is never painted in the built-in blue before
+switching to the agent's own colour. `settings` overrides any of them per embed
+— and with `fetchConfig: false` the widget shows itself at once:
 
 ```js
 initWebchat({
@@ -156,6 +158,10 @@ initWebchat({
   settings: {
     agentName: "Nova",
     colors: { launcher: "#ff6b3d" },
+    // What the launcher wears, most specific first: `launcherIconUrl` (an
+    // image), `launcherIcon` (bubble | square | plane | spark), then
+    // `launcherText` ("Ask AI"), which turns the circle into a pill.
+    launcherIcon: "spark",
     greetings: ["Hi!", "Ask me anything about orders."],
     timestamps: "12h",
     teaser: { enabled: true, text: "Need a hand?", delayMs: 5000 },

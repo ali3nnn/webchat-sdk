@@ -8,12 +8,22 @@ import type { WebchatError } from './errors.js';
  */
 export interface WebchatSettings {
   agentName: string;
-  /** Image URL or data URL; empty = initials badge. The fallback for the two below. */
+  /** The agent's one picture — image URL or data URL; empty = an initials badge. */
   avatarUrl: string;
-  /** Image on the floating launcher; empty = `avatarUrl`, or the built-in chat bubble. */
+  /** Image on the floating launcher; empty = `launcherIcon`, `avatarUrl`, or the built-in bubble. */
   launcherIconUrl: string;
-  /** Image next to a block of replies; empty = `avatarUrl`. */
-  messageAvatarUrl: string;
+  /**
+   * Built-in glyph on the floating launcher — one of `LAUNCHER_ICONS`
+   * ('bubble', 'square', 'plane', 'spark'). Ignored when `launcherIconUrl` is
+   * set; empty falls back to `launcherText`, then `avatarUrl`, then the bubble.
+   */
+  launcherIcon: string;
+  /**
+   * A word or two on the launcher instead of a glyph ("Ask AI"), which turns
+   * the circle into a pill. Used only when neither `launcherIconUrl` nor
+   * `launcherIcon` is set — so a label stays stored while a glyph is showing.
+   */
+  launcherText: string;
   showAvatarInHeader: boolean;
   showAvatarOnMessages: boolean;
   /** Show tool activity ("knowledge_retrieval · completed") under replies. */
@@ -36,6 +46,8 @@ export interface WebchatSettings {
   /** Keep the transcript in localStorage and resume the session across pages. */
   persistConversation: boolean;
   showNewChatButton: boolean;
+  /** Label on the header's "new chat" button; blank falls back to "New chat". */
+  newChatButtonText: string;
   feedbackEnabled: boolean;
   position: 'bottom-right' | 'bottom-left';
 }
