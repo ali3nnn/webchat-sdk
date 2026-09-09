@@ -55,10 +55,28 @@ export interface WebchatWidget {
   destroy(): void;
 }
 
-const CHAT_ICON =
+/** Wraps glyph paths in the stroked 24x24 frame every icon here uses. */
+const strokeIcon = (paths: string): string =>
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-  '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-4.2-.9L3 20.5l1.6-4.4A8.3 8.3 0 0 1 3.5 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/></svg>';
+  `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+
+/**
+ * Glyphs the launcher can wear, drawn in the colour that contrasts with the
+ * launcher itself (`settings.colors.launcher`). `settings.launcherIcon` names
+ * one of these; the Chat Studio offers the same four, and an id this build
+ * does not know falls back to the bubble rather than showing nothing.
+ */
+export const LAUNCHER_ICONS: Record<string, string> = {
+  bubble: '<path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.9 9.9 0 0 1-4.2-.9L3 20.5l1.6-4.4A8.3 8.3 0 0 1 3.5 11.5 8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z"/>',
+  square: '<path d="M6 4h12a2.5 2.5 0 0 1 2.5 2.5v7A2.5 2.5 0 0 1 18 16h-7.5L6 20v-4a2.5 2.5 0 0 1-2.5-2.5v-7A2.5 2.5 0 0 1 6 4z"/>',
+  plane: '<path d="M21.5 2.5 11 13"/><path d="M21.5 2.5 15.5 21.5 11 13 2.5 8.5z"/>',
+  spark: '<path d="M12 3.2 13.9 9 19.7 11 13.9 13 12 18.8 10.1 13 4.3 11 10.1 9z"/><path d="M18.5 3v3"/><path d="M20 4.5h-3"/>',
+};
+
+const CHAT_ICON = strokeIcon(LAUNCHER_ICONS.bubble!);
+
+/** How long the widget waits for GET /widget/config before showing itself anyway. */
+const REVEAL_TIMEOUT_MS = 1200;
 const SEND_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
   'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -72,7 +90,8 @@ export const DEFAULT_SETTINGS: WebchatSettings = {
   agentName: 'Chat',
   avatarUrl: '',
   launcherIconUrl: '',
-  messageAvatarUrl: '',
+  launcherIcon: '',
+  launcherText: '',
   showAvatarInHeader: true,
   showAvatarOnMessages: false,
   showTools: false,
@@ -88,6 +107,7 @@ export const DEFAULT_SETTINGS: WebchatSettings = {
   privacy: { enabled: false, title: 'Before we start', content: '', acceptLabel: 'I understand' },
   persistConversation: true,
   showNewChatButton: true,
+  newChatButtonText: 'New chat',
   feedbackEnabled: true,
   position: 'bottom-right',
 };
@@ -258,6 +278,8 @@ export function initWebchat(
 
   const root = element('div', 'root');
   root.dataset.inline = String(inline);
+  // Kept invisible until the settings are final; see `markReady` below.
+  root.dataset.ready = 'false';
 
   const panel = element('div', 'panel');
   panel.setAttribute('role', 'dialog');
@@ -381,6 +403,7 @@ export function initWebchat(
     title.textContent = settings.agentName;
     renderAvatar(headerAvatar, settings.avatarUrl);
     headerAvatar.hidden = !settings.showAvatarInHeader;
+    newChatButton.textContent = settings.newChatButtonText.trim() || 'New chat';
     newChatButton.hidden = !settings.showNewChatButton;
 
     disclaimer.textContent = settings.disclaimer.text;
@@ -396,18 +419,38 @@ export function initWebchat(
     gate.hidden = privacyAccepted;
 
     teaserText.textContent = settings.teaser.text;
-    const launcherIcon = settings.launcherIconUrl || settings.avatarUrl;
-    launcher.innerHTML = launcherIcon ? '' : CHAT_ICON;
-    if (launcherIcon) {
-      const img = element('img');
-      img.src = launcherIcon;
-      img.alt = '';
-      launcher.append(img);
-    }
+    renderLauncher();
 
     renderGreetings();
     for (const message of client.messages) renderMessage(message);
     scheduleTeaser();
+  }
+
+  /**
+   * What the launcher wears, most specific first: an image of your own, then a
+   * built-in glyph, then a word or two instead of one ("Ask AI"), then the
+   * agent's avatar — and the bubble when nothing was chosen. A text launcher
+   * grows into a pill instead of staying a circle.
+   *
+   * Text sits *below* the glyph on purpose: the Studio keeps whatever label
+   * was typed, so choosing a glyph must not mean losing it.
+   */
+  function renderLauncher(): void {
+    const chose = Boolean(settings.launcherIcon || settings.launcherText.trim());
+    const url = settings.launcherIconUrl || (chose ? '' : settings.avatarUrl);
+    const label = url || settings.launcherIcon ? '' : settings.launcherText.trim();
+    launcher.dataset.text = String(Boolean(label));
+    launcher.replaceChildren();
+    if (url) {
+      const img = element('img');
+      img.src = url;
+      img.alt = '';
+      launcher.append(img);
+    } else if (label) {
+      launcher.textContent = label;
+    } else {
+      launcher.innerHTML = strokeIcon(LAUNCHER_ICONS[settings.launcherIcon] ?? LAUNCHER_ICONS.bubble!);
+    }
   }
 
   /** Text label, or the paper-plane icon with the label as its accessible name. */
@@ -452,7 +495,7 @@ export function initWebchat(
     node.dataset.role = role;
     const head = element('div', 'group-head');
     const avatar = element('div', 'avatar');
-    renderAvatar(avatar, settings.messageAvatarUrl || settings.avatarUrl);
+    renderAvatar(avatar, settings.avatarUrl);
     const time = element('span', 'time', formatTime(createdAt, settings.timestamps));
     head.append(avatar, time);
     const body = element('div', 'group-body');
@@ -702,6 +745,23 @@ export function initWebchat(
   // ── boot: server settings, then restore, then connect ──────────────────────
   applySettings();
 
+  /**
+   * The defaults paint a blue launcher with the built-in bubble; the agent's
+   * own colour and icon only arrive with GET /widget/config a few frames
+   * later. Rather than let visitors watch that swap, the widget stays
+   * invisible until the settings are final — and shows itself anyway after
+   * `REVEAL_TIMEOUT_MS` so a slow or unreachable config never costs the site
+   * its launcher.
+   */
+  let revealTimer: ReturnType<typeof setTimeout> | undefined;
+  function markReady(): void {
+    clearTimeout(revealTimer);
+    revealTimer = undefined;
+    root.dataset.ready = 'true';
+  }
+  if (options.fetchConfig === false) markReady();
+  else revealTimer = setTimeout(markReady, REVEAL_TIMEOUT_MS);
+
   const configured = (async () => {
     if (options.fetchConfig !== false) {
       try {
@@ -726,6 +786,7 @@ export function initWebchat(
     }
     if (destroyed) return;
     applySettings();
+    markReady();
     restoreConversation();
   })();
   void configured.then(() => {
@@ -745,6 +806,7 @@ export function initWebchat(
     destroy() {
       destroyed = true;
       clearTimeout(teaserTimer);
+      clearTimeout(revealTimer);
       client.destroy();
       host.remove();
     },

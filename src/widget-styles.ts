@@ -24,6 +24,12 @@ export const WIDGET_CSS = `
 }
 
 .root { position: fixed; z-index: 2147483000; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+/* Hidden until the agent's colours and icon have arrived, so the launcher is
+   never painted in the built-in blue before flipping to the real brand. A
+   plain toggle, deliberately: a fade would be driven by frames the page does
+   not get while it sits in a background tab, and could leave the widget
+   invisible on the tab the visitor finally looks at. */
+.root[data-ready="false"] { opacity: 0; pointer-events: none; }
 .root[data-position="bottom-right"] { right: 20px; bottom: 20px; }
 .root[data-position="bottom-left"] { left: 20px; bottom: 20px; align-items: flex-start; }
 .root[data-inline="true"] { position: static; width: 100%; height: 100%; }
@@ -34,6 +40,8 @@ export const WIDGET_CSS = `
   box-shadow: 0 12px 28px rgba(15, 20, 40, .28); display: grid; place-items: center;
   transition: transform .15s ease;
 }
+/* A word or two instead of a glyph: the circle becomes a pill that grows with it. */
+.launcher[data-text="true"] { width: auto; height: 48px; min-width: 58px; border-radius: 999px; padding: 0 20px; font-size: 15px; font-weight: 600; letter-spacing: .01em; white-space: nowrap; }
 .launcher:hover { transform: scale(1.05); }
 .launcher svg { width: 26px; height: 26px; }
 .launcher img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
@@ -69,7 +77,7 @@ export const WIDGET_CSS = `
 .icon-button { border: 0; background: transparent; color: inherit; opacity: .7; cursor: pointer; font-size: 18px; line-height: 1; padding: 4px 6px; border-radius: 8px; }
 .icon-button:hover { opacity: 1; background: rgba(127, 127, 127, .15); }
 .icon-button svg { width: 18px; height: 18px; display: block; }
-.newchat { border: 1px solid currentColor; background: transparent; color: inherit; opacity: .8; cursor: pointer; font-size: 12px; padding: 5px 10px; border-radius: 999px; }
+.newchat { flex: none; white-space: nowrap; border: 1px solid currentColor; background: transparent; color: inherit; opacity: .8; cursor: pointer; font-size: 12px; padding: 5px 10px; border-radius: 999px; }
 .newchat:hover { opacity: 1; }
 
 .disclaimer { font-size: 11.5px; color: var(--wc-muted); padding: 8px 14px; text-align: center; border-bottom: 1px solid var(--wc-line); background: var(--wc-bg); }
