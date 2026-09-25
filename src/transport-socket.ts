@@ -23,6 +23,8 @@ export class SocketTransport implements Transport {
   constructor(
     private readonly options: WebchatClientOptions,
     private readonly ctx: TransportContext,
+    /** socket.io's own list, derived from `options.transport` (transport-choice.ts). */
+    private readonly socketTransports: ('websocket' | 'polling')[] = ['websocket', 'polling'],
   ) {}
 
   get connected(): boolean {
@@ -41,7 +43,7 @@ export class SocketTransport implements Transport {
       // access log or a HAR file. The agent authenticates the signed token in
       // the socket.io auth payload and never reads these.
       query: this.correlationQuery(grant),
-      transports: this.options.transports ?? ['websocket', 'polling'],
+      transports: this.socketTransports,
       reconnection: this.options.reconnection ?? true,
       reconnectionAttempts: this.options.reconnectionAttempts ?? Infinity,
       autoConnect: false,

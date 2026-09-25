@@ -120,6 +120,9 @@ export interface WebchatMessage {
   feedback?: 'up' | 'down' | null;
 }
 
+/** The values `transport` accepts; see WebchatClientOptions.transport. */
+export type WebchatTransportName = 'websocket' | 'polling' | 'http';
+
 export interface WebchatClientOptions {
   /** Base URL of the ai-agent instance, e.g. https://support-agent.internal. */
   url: string;
@@ -142,15 +145,17 @@ export interface WebchatClientOptions {
   /** Stable visitor id (the widget keeps one in localStorage). */
   userId?: string;
   /**
-   * How to carry the conversation. `socket` (default) keeps a socket.io
-   * connection open; `http` sends one `POST /chat/stream` per message and
-   * reads the reply as Server-Sent Events — no persistent connection, so no
-   * sticky sessions and no websocket support needed of the host, which makes
-   * it the transport for Vercel and other per-request-routed platforms. The
-   * widget takes the agent's preference from GET /widget/config when this is
-   * not set.
+   * How to carry the conversation:
+   *   - `websocket` — one connection held open; the fastest.
+   *   - `polling` — the same conversation over repeated HTTP requests (socket.io
+   *     long-polling), for networks and proxies that block websockets.
+   *   - `http` — one `POST /chat/stream` per message, the reply read as
+   *     Server-Sent Events: no connection held open and no sticky sessions, so
+   *     it passes anything that passes ordinary requests (Vercel, for one).
+   * Leave it out and the widget takes the agent's choice from
+   * `GET /widget/config`, else tries a websocket and falls back to polling.
    */
-  transport?: 'socket' | 'http';
+  transport?: WebchatTransportName;
   /** socket.io path the agent serves. Defaults to `/webchat`. */
   socketPath?: string;
   /** Connect as soon as the client is created. Defaults to false. */
@@ -165,8 +170,6 @@ export interface WebchatClientOptions {
   headers?: Record<string, string>;
   /** Injectable fetch, for Node runtimes or tests. */
   fetch?: typeof globalThis.fetch;
-  /** socket.io transports. Defaults to websocket first, polling as fallback. */
-  transports?: ('websocket' | 'polling')[];
   /**
    * Put the session and project ids in the socket.io handshake URL as
    * `sessionId` and `agentId`, so a connection can be found again in proxy/CDN

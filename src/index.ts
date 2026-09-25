@@ -20,6 +20,7 @@ export type {
   TokenGrant,
   TokenProvider,
   WebchatClientOptions,
+  WebchatTransportName,
   WebchatEvents,
   WebchatMessage,
   WebchatSettings,
