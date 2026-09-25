@@ -33,6 +33,12 @@ export interface WebchatSettings {
   teaser: { enabled: boolean; text: string; delayMs: number };
   colors: { launcher: string; userBubble: string; assistantBubble: string; background: string; header: string };
   disclaimer: { enabled: boolean; text: string };
+  /**
+   * The line under the composer. `html` may hold links (`<a href>`, http(s) or
+   * mailto — a bare domain gets https://) and `<b>`/`<strong>`/`<i>`/`<em>`;
+   * anything else is shown as its text.
+   */
+  watermark: { enabled: boolean; html: string };
   inputPlaceholder: string;
   /** Label on the send button, or its tooltip/screen-reader name when it shows the icon. */
   sendButtonText: string;

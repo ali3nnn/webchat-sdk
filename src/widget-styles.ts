@@ -69,10 +69,6 @@ export const WIDGET_CSS = `
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 .title { font-size: 14px; font-weight: 600; margin: 0; }
 .subtitle { font-size: 12px; opacity: .7; margin: 1px 0 0; display: flex; align-items: center; gap: 6px; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--wc-muted); flex: none; }
-.dot[data-status="connected"] { background: #2f9e44; }
-.dot[data-status="connecting"], .dot[data-status="reconnecting"] { background: #f08c00; }
-.dot[data-status="disconnected"] { background: #e03131; }
 .header .spacer { margin-left: auto; }
 .icon-button { border: 0; background: transparent; color: inherit; opacity: .7; cursor: pointer; font-size: 18px; line-height: 1; padding: 4px 6px; border-radius: 8px; }
 .icon-button:hover { opacity: 1; background: rgba(127, 127, 127, .15); }
@@ -80,6 +76,9 @@ export const WIDGET_CSS = `
 .newchat { flex: none; white-space: nowrap; border: 1px solid currentColor; background: transparent; color: inherit; opacity: .8; cursor: pointer; font-size: 12px; padding: 5px 10px; border-radius: 999px; }
 .newchat:hover { opacity: 1; }
 
+.watermark { font-size: 11px; color: var(--wc-muted); text-align: center; padding: 0 12px 10px; margin-top: -4px; background: var(--wc-bg); }
+.watermark a { color: inherit; font-weight: 600; text-decoration: none; }
+.watermark a:hover { text-decoration: underline; }
 .disclaimer { font-size: 11.5px; color: var(--wc-muted); padding: 8px 14px; text-align: center; border-bottom: 1px solid var(--wc-line); background: var(--wc-bg); }
 
 .log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
