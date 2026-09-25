@@ -6,7 +6,6 @@ import type {
   WebchatMessage,
   WebchatSettings,
   WebchatSettingsOverrides,
-  WebchatStatus,
 } from './types.js';
 import { WIDGET_CSS } from './widget-styles.js';
 
@@ -20,7 +19,7 @@ export interface WebchatWidgetOptions extends Omit<WebchatClientOptions, 'autoCo
   fetchConfig?: boolean;
   /** Header title. Shortcut for `settings.agentName`. */
   title?: string;
-  /** Line under the title. Defaults to the connection status. */
+  /** Line under the title. None by default — the connection status is not shown. */
   subtitle?: string;
   /** First message shown in the panel. Shortcut for `settings.greetings`. */
   greeting?: string;
@@ -289,11 +288,12 @@ export function initWebchat(
   const headerAvatar = element('div', 'avatar');
   const titles = element('div');
   const title = element('p', 'title');
+  // Only a page's own subtitle is shown. The connection status ("online",
+  // "disconnected", …) is not: visitors read it as noise, and a connection that
+  // actually fails still says so on the error line above the input.
   const subtitle = element('p', 'subtitle');
-  const dot = element('span', 'dot');
-  dot.dataset.status = 'idle';
-  const subtitleText = element('span');
-  subtitle.append(dot, subtitleText);
+  subtitle.textContent = options.subtitle ?? '';
+  subtitle.hidden = !options.subtitle;
   titles.append(title, subtitle);
   const spacer = element('div', 'spacer');
   const newChatButton = element('button', 'newchat', 'New chat');
@@ -610,14 +610,7 @@ export function initWebchat(
     for (const message of stored.messages) renderMessage(message);
   }
 
-  function setStatus(status: WebchatStatus): void {
-    dot.dataset.status = status;
-    if (!options.subtitle) subtitleText.textContent = status === 'connected' ? 'online' : status;
-  }
-  if (options.subtitle) subtitleText.textContent = options.subtitle;
-
   client.on('message', renderMessage);
-  client.on('status', setStatus);
   client.on('ready', () => {
     errorLine.hidden = true;
     persist();

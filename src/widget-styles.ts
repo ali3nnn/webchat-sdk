@@ -69,10 +69,6 @@ export const WIDGET_CSS = `
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 .title { font-size: 14px; font-weight: 600; margin: 0; }
 .subtitle { font-size: 12px; opacity: .7; margin: 1px 0 0; display: flex; align-items: center; gap: 6px; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--wc-muted); flex: none; }
-.dot[data-status="connected"] { background: #2f9e44; }
-.dot[data-status="connecting"], .dot[data-status="reconnecting"] { background: #f08c00; }
-.dot[data-status="disconnected"] { background: #e03131; }
 .header .spacer { margin-left: auto; }
 .icon-button { border: 0; background: transparent; color: inherit; opacity: .7; cursor: pointer; font-size: 18px; line-height: 1; padding: 4px 6px; border-radius: 8px; }
 .icon-button:hover { opacity: 1; background: rgba(127, 127, 127, .15); }

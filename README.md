@@ -123,7 +123,7 @@ git push --follow-tags
 |---|---|---|
 | `url` | — | Agent base URL (required; the string form of `initWebchat` sets this) |
 | `projectToken` | — | The project's public embed token (24 characters, `wc_…`), from the Chat Studio — sent to `POST /sessions` and `GET /widget/config`. Omit for the server's default project. |
-| `title` / `subtitle` | agent name / status | Header text |
+| `title` / `subtitle` | agent name / none | Header text. The connection status is not shown; a failed connection says so on the error line. |
 | `greeting` | — | First bubble, rendered locally and never sent to the agent |
 | `placeholder` | `Type a message…` | Input placeholder |
 | `position` | `bottom-right` | Floating corner |
