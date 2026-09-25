@@ -145,7 +145,10 @@ The widget's look and behaviour are configured per project in the agent's Chat
 Studio and served at `GET /widget/config?projectToken=…`: agent name and avatar,
 colours (launcher, bubbles, background, header), bubble style, greetings,
 teaser message, AI disclaimer, input/send texts, timestamps, privacy notice,
-persistence across pages, the "New chat" button and thumbs up/down feedback.
+persistence across pages, the "New chat" button, thumbs up/down feedback, and
+the "Powered by" line under the composer (`watermark: { enabled, html }` — on by
+default; its HTML keeps only links and bold/italic, and a bare-domain `href`
+gets `https://`).
 The widget fetches them before connecting and stays invisible until they land
 (at most 1.2s), so the launcher is never painted in the built-in blue before
 switching to the agent's own colour. `settings` overrides any of them per embed

@@ -76,6 +76,9 @@ export const WIDGET_CSS = `
 .newchat { flex: none; white-space: nowrap; border: 1px solid currentColor; background: transparent; color: inherit; opacity: .8; cursor: pointer; font-size: 12px; padding: 5px 10px; border-radius: 999px; }
 .newchat:hover { opacity: 1; }
 
+.watermark { font-size: 11px; color: var(--wc-muted); text-align: center; padding: 0 12px 10px; margin-top: -4px; background: var(--wc-bg); }
+.watermark a { color: inherit; font-weight: 600; text-decoration: none; }
+.watermark a:hover { text-decoration: underline; }
 .disclaimer { font-size: 11.5px; color: var(--wc-muted); padding: 8px 14px; text-align: center; border-bottom: 1px solid var(--wc-line); background: var(--wc-bg); }
 
 .log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
