@@ -298,14 +298,13 @@ does not surface is still available.
 | `token` | — | A session token you already hold |
 | `tokenProvider` | POST `${url}/sessions` | How to obtain/refresh tokens |
 | `sessionId` | — | Resume an existing conversation |
-| `transport` | from `GET /widget/config`, else `socket` | `socket` keeps a socket.io connection; `http` sends one `POST /chat/stream` per message and reads SSE — no persistent connection, no sticky sessions, the transport for Vercel. The widget takes the agent's `WEBCHAT_TRANSPORT` unless this is set; a headless client defaults to `socket`. |
+| `transport` | from `GET /widget/config`, else auto | How the conversation travels — the only transport setting. `"websocket"`: one connection held open, the fastest. `"polling"`: the same over repeated requests (socket.io long-polling), for networks that block websockets. `"http"`: one `POST /chat/stream` per message, the reply read as SSE — nothing held open, no sticky sessions, passes any proxy that passes ordinary requests (Vercel included). Leave it out and the widget follows the agent's `webchat.transport`; failing that, it tries a websocket and falls back to polling. Anything else throws `invalid_options`. |
 | `socketPath` | `/webchat` | socket.io path the agent serves |
 | `autoConnect` | `false` | Connect on construction |
 | `reconnection` / `reconnectionAttempts` | `true` / `Infinity` | socket.io reconnection |
 | `connectTimeoutMs` / `replyTimeoutMs` | `30000` / `120000` | Give-up thresholds |
 | `headers` | — | Extra headers for the default token endpoint |
 | `fetch` | `globalThis.fetch` | Injectable fetch |
-| `transports` | `['websocket','polling']` | socket.io transports |
 | `correlationIds` | `true` | Put `sessionId` and `agentId` in the handshake URL for log correlation |
 
 Methods: `connect()`, `send(text)` → resolves with the finished assistant
@@ -355,7 +354,7 @@ rejected with `busy` rather than interleaved.
 
 ### Over HTTP
 
-`transport: 'http'` carries the same protocol without a connection. `connect()`
+`transport: "http"` carries the same protocol without a connection. `connect()`
 mints the token — `POST /sessions` also reports the agent's name, provider,
 model and history length, so `ready` says what a socket handshake would — and
 every `send()` is one request:
@@ -387,9 +386,27 @@ serverless max duration, a proxy — leaves what was streamed on the message and
 fails the turn with `agent_error`.
 
 The widget picks this up from the agent: `GET /widget/config` reports the
-agent's `WEBCHAT_TRANSPORT`, and the widget follows it unless the embed pins
-`transport` itself. So a deployment moving to Vercel flips one variable and
+agent's `webchat.transport`, and the widget follows it unless the embed pins
+`transport` itself. So a deployment moving to Vercel flips one setting and
 every page already carrying the snippet follows on its next load.
+
+### Upgrading from `transports`
+
+Before 0.7 the socket.io list was its own option, `transports`, beside
+`transport: "socket" | "http"`. One setting replaces both:
+
+| Before | Now |
+|---|---|
+| `transports: ["polling"]` | `transport: "polling"` |
+| `transports: ["websocket"]` | `transport: "websocket"` |
+| `transports: ["websocket", "polling"]`, `transport: "socket"` | leave `transport` out |
+| `transport: "http"` | unchanged |
+
+Snippets already on a page keep working — a valid `transports` list is read as
+the matching `transport`, with a console warning — but the option is no longer
+documented and will be removed. An invalid one (`transports: "http"`, a typo)
+now throws `invalid_options` saying what to write, instead of failing inside
+socket.io.
 
 ## Try it
 
@@ -423,7 +440,7 @@ library. Anything that needs hosting is the agent's job.
 - A conversation lives in memory on the container the socket is attached to.
   Behind a load balancer, enable sticky sessions, or give the agents the
   socket.io Redis adapter and a shared session store — or use
-  `transport: 'http'`, which needs neither: every turn is one request, and the
+  `transport: "http"`, which needs neither: every turn is one request, and the
   agent rehydrates the conversation from its database wherever it lands.
 - Every replica of one agent must share `WEBCHAT_TOKEN_SECRET`, otherwise a
   token minted by one replica is rejected by the next.

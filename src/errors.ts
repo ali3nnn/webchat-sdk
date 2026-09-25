@@ -10,6 +10,8 @@ export type WebchatErrorCode =
   | 'busy'
   | 'cancelled'
   | 'invalid_message'
+  /** An option passed to createWebchatClient / initWebchat has no meaning. */
+  | 'invalid_options'
   | 'agent_error';
 
 /** Every rejection and `error` event from the SDK is one of these. */

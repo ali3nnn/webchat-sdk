@@ -1,4 +1,5 @@
 import { WebchatClient } from './client.js';
+import { isTransportName } from './transport-choice.js';
 import { renderMarkdown } from './markdown.js';
 import type {
   WebchatClientOptions,
@@ -774,10 +775,13 @@ export function initWebchat(
           if (config.webchat) settings = mergeSettings(DEFAULT_SETTINGS, config.webchat, options.settings, shortcutOverrides);
           if (config.agentId && !options.storageKey && !options.projectToken) storageBase = `webchat:${config.agentId}`;
           // The embed may pin a transport; otherwise the agent's choice
-          // (WEBCHAT_TRANSPORT) applies, so a deployment can switch without
-          // every site editing its snippet.
-          if (!clientOptions.transport && (config.transport === 'http' || config.transport === 'socket')) {
-            (client as unknown as { options: WebchatClientOptions }).options.transport = config.transport;
+          // (webchat.transport) applies, so a deployment can switch without
+          // every site editing its snippet. Judged on the client's validated
+          // options, where a legacy `transports` pin has already become one.
+          // An older agent answers `socket`, which means auto: nothing to set.
+          const current = (client as unknown as { options: WebchatClientOptions }).options;
+          if (!current.transport && isTransportName(config.transport)) {
+            current.transport = config.transport;
           }
         }
       } catch {

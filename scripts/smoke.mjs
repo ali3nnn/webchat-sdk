@@ -15,8 +15,9 @@ import { createWebchatClient, createWebchatHub } from '../dist/index.js';
 const url = process.env.AGENT_URL ?? 'http://localhost:3210';
 const agentId = process.env.AGENT_ID ?? 'support';
 const projectToken = process.env.PROJECT_TOKEN;
-const transport = process.env.TRANSPORT === 'http' ? 'http' : 'socket';
-console.log(`transport: ${transport}`);
+// websocket | polling | http; unset is auto (websocket, falling back to polling).
+const transport = process.env.TRANSPORT || undefined;
+console.log(`transport: ${transport ?? 'auto'}`);
 
 const events = [];
 const client = createWebchatClient({ url, projectToken, transport });

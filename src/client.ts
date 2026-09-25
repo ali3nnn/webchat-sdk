@@ -12,6 +12,7 @@ import {
 import { createDefaultTokenProvider } from './token.js';
 import { HttpTransport } from './transport-http.js';
 import { SocketTransport } from './transport-socket.js';
+import { planTransport, readTransportOption } from './transport-choice.js';
 import type { ServerEvent, ServerEventName, Transport, TransportContext } from './transport.js';
 import type {
   TokenGrant,
@@ -91,7 +92,11 @@ export class WebchatClient extends Emitter<WebchatEvents> {
 
   constructor(options: WebchatClientOptions) {
     super();
-    this.options = options;
+    // Validated here, not at connect time: a typo in `transport` should fail
+    // where it was written, not as a connection that silently never opens.
+    // The legacy `transports` list is folded into `transport` and dropped.
+    const { transports: _legacy, ...rest } = options as WebchatClientOptions & { transports?: unknown };
+    this.options = { ...rest, transport: readTransportOption(options as { transport?: unknown; transports?: unknown }) };
     this.grant = options.token ? { token: options.token } : undefined;
     this.grantMintedAt = Date.now();
     this.knownSessionId = options.sessionId;
@@ -312,7 +317,8 @@ export class WebchatClient extends Emitter<WebchatEvents> {
         },
       },
     };
-    return this.options.transport === 'http' ? new HttpTransport(ctx) : new SocketTransport(this.options, ctx);
+    const plan = planTransport(this.options.transport);
+    return plan.kind === 'http' ? new HttpTransport(ctx) : new SocketTransport(this.options, ctx, plan.socketTransports);
   }
 
   private async resolveToken(options: { fresh?: boolean; sessionId?: string } = {}): Promise<TokenGrant> {
