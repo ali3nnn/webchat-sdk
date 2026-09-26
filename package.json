@@ -1,6 +1,6 @@
 {
   "name": "webchat-sdk",
-  "version": "0.8.0",
+  "version": "0.9.0-dev.1",
   "description": "Client SDK for talking to ai-agent instances over socket.io or plain HTTP (SSE), with an agent-issued session token",
   "license": "MIT",
   "type": "module",

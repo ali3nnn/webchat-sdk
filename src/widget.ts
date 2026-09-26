@@ -1,5 +1,6 @@
 import { WebchatClient } from './client.js';
 import { isTransportName } from './transport-choice.js';
+import { pickLine, toneLines } from './error-messages.js';
 import { renderMarkdown } from './markdown.js';
 import { renderWatermark } from './watermark.js';
 import type {
@@ -40,6 +41,14 @@ export interface WebchatWidgetOptions extends Omit<WebchatClientOptions, 'autoCo
   accent?: string;
   /** localStorage namespace; change it to keep two embeds of one agent apart. */
   storageKey?: string;
+  /**
+   * For the Chat Studio's preview, not real embeds: simulate the agent being
+   * down. The widget never connects, and every message sent fails the way a
+   * reply fails for real — typing dots, then one of the project's error
+   * messages in the tone it chose — so the operator sees what a visitor would.
+   * Nothing reaches the agent.
+   */
+  previewError?: boolean;
 }
 
 export interface WebchatWidget {
@@ -88,6 +97,7 @@ const THUMB_DOWN =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 13V4h3a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1zM17 13l-4 7a2 2 0 0 1-2-2v-4H5.5a2 2 0 0 1-2-2.3l1.1-7a2 2 0 0 1 2-1.7H17"/></svg>';
 
 export const DEFAULT_SETTINGS: WebchatSettings = {
+  language: '',
   agentName: 'Chat',
   avatarUrl: '',
   launcherIconUrl: '',
@@ -171,6 +181,19 @@ function formatTime(iso: string, mode: WebchatSettings['timestamps']): string {
   return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', hour12: mode === '12h' });
 }
 
+/**
+ * What a visitor reads when something failed: one of the project's error
+ * messages, never the error — that is for the site's developers, so it goes
+ * to the console. `seed` keeps one failed message on one line across
+ * re-renders; see error-messages.ts for where the lines come from.
+ */
+function visitorMessage(error: unknown, lines: readonly string[], seed?: string): string {
+  // A failed reply re-renders with every update; its error was already
+  // reported by the client's `error` event when it happened.
+  if (seed === undefined) console.warn('[webchat]', error);
+  return pickLine(lines, seed);
+}
+
 /* ── localStorage, all guarded: private mode and disabled storage must not break the chat ── */
 interface StoredConversation {
   sessionId: string;
@@ -222,7 +245,7 @@ function visitorId(): string {
  *   </script>
  *
  * `projectToken` is the project's public embed token, copied from the Chat
- * Studio; leave it out to talk to the server's default project.
+ * Studio. It is required: the agent has no default project to fall back on.
  *
  * Presentation (name, avatar, colours, greetings, privacy notice, ...) comes
  * from the agent's Chat Studio via GET /widget/config; anything passed in
@@ -361,17 +384,27 @@ export function initWebchat(
   // ── client ─────────────────────────────────────────────────────────────────
   const {
     settings: _settings, fetchConfig: _fetch, title: _t, subtitle: _s, greeting: _g, placeholder: _p,
-    position: _pos, target: _target, launcher: _l, open: _o, connectOn, accent: _a, storageKey: _k,
+    position: _pos, target: _target, launcher: _l, open: _o, connectOn, accent: _a, storageKey: _k, previewError: _pe,
     ...clientOptions
   } = options;
   const userId = clientOptions.userId ?? visitorId();
 
   // The storage namespace is per agent; until the config tells us the agent id
-  // (default project) we use whatever the embed said.
+  // we use whatever the embed said.
   let storageBase = `webchat:${options.storageKey ?? options.projectToken ?? 'default'}`;
   const conversationKey = () => `${storageBase}:conversation`;
   const privacyKey = () => `${storageBase}:privacy`;
   const teaserKey = () => `${storageBase}:teaser`;
+  // Fixed at start, unlike the keys above: it is read on the day the agent is
+  // down, when no config arrives to say which agent this is.
+  const errorMessagesKey = `${storageBase}:error-messages`;
+  /** The project's lines in its chosen tone, else the ones this browser last received, else English. */
+  const errorLines = (): string[] => {
+    const current = toneLines(settings.errorMessages);
+    if (current.length > 0) return current;
+    const remembered = storageRead<string[]>(errorMessagesKey);
+    return Array.isArray(remembered) ? remembered.filter((line) => typeof line === 'string' && line.trim() !== '') : [];
+  };
 
   let restoredSessionId: string | undefined = clientOptions.sessionId;
   const client = new WebchatClient({ ...clientOptions, userId, sessionId: restoredSessionId });
@@ -498,6 +531,29 @@ export function initWebchat(
     }
   }
 
+  let outageTurn = 0;
+  /**
+   * One visitor message under `previewError`: shown like any other, answered by
+   * the typing dots, then failed with an error message — never sent. The
+   * bubbles are not messages of the conversation, so nothing persists them.
+   */
+  function simulateOutage(text: string): void {
+    const at = new Date().toISOString();
+    const id = `outage-${(outageTurn += 1)}`;
+    appendBubble('user', text, `${id}-visitor`, at);
+    const reply = appendBubble('assistant', '', `${id}-reply`, at);
+    const entry = rendered.get(`${id}-reply`)!;
+    rendered.delete(`${id}-visitor`);
+    rendered.delete(`${id}-reply`);
+    reply.dataset.status = 'streaming';
+    entry.bubble.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
+    setTimeout(() => {
+      reply.dataset.status = 'error';
+      entry.bubble.textContent = pickLine(errorLines());
+      scrollToEnd();
+    }, 900);
+  }
+
   /** A block of messages: avatar and time on top, bubbles stacked underneath. */
   function createGroup(role: 'user' | 'assistant', createdAt: string, where: 'append' | 'prepend' = 'append'): MessageGroup {
     const node = element('div', 'group');
@@ -563,7 +619,8 @@ export function initWebchat(
       entry.bubble.replaceChildren(renderMarkdown(message.text));
     } else {
       entry.bubble.classList.remove('md');
-      entry.bubble.textContent = message.error ?? message.text;
+      // A failed reply never shows why it failed — see visitorMessage().
+      entry.bubble.textContent = message.error !== undefined ? visitorMessage(message.error, errorLines(), message.id) : message.text;
     }
 
     entry.tools.replaceChildren(
@@ -626,8 +683,7 @@ export function initWebchat(
   client.on('error', (error) => {
     // `busy` and per-turn failures already show up on the message itself.
     if (error.code === 'busy' || error.details?.messageId) return;
-    errorLine.textContent = error.message;
-    errorLine.hidden = false;
+    showError(error);
   });
 
   // ── teaser ─────────────────────────────────────────────────────────────────
@@ -660,7 +716,7 @@ export function initWebchat(
 
   // ── behaviour ──────────────────────────────────────────────────────────────
   function showError(error: unknown): void {
-    errorLine.textContent = error instanceof Error ? error.message : String(error);
+    errorLine.textContent = visitorMessage(error, errorLines());
     errorLine.hidden = false;
   }
 
@@ -668,6 +724,8 @@ export function initWebchat(
   // the agent wants, and a socket opened to a host that cannot hold one would
   // connect and then die.
   function connect(): void {
+    // A simulated outage never reaches the agent.
+    if (options.previewError) return;
     void configured.then(() => client.connect()).catch(showError);
   }
 
@@ -732,13 +790,14 @@ export function initWebchat(
     if (text === '' || !privacyAccepted) return;
     input.value = '';
     errorLine.hidden = true;
+    if (options.previewError) {
+      simulateOutage(text);
+      return;
+    }
     sendButton.disabled = true;
     void client
       .send(text)
-      .catch((error: unknown) => {
-        errorLine.textContent = error instanceof Error ? error.message : String(error);
-        errorLine.hidden = false;
-      })
+      .catch(showError)
       .finally(() => {
         sendButton.disabled = false;
       });
@@ -774,6 +833,8 @@ export function initWebchat(
         if (response.ok) {
           const config = (await response.json()) as { agentId?: string; webchat?: WebchatSettings; transport?: string };
           if (config.webchat) settings = mergeSettings(DEFAULT_SETTINGS, config.webchat, options.settings, shortcutOverrides);
+          const lines = toneLines(settings.errorMessages);
+          if (lines.length > 0) storageWrite(errorMessagesKey, lines);
           if (config.agentId && !options.storageKey && !options.projectToken) storageBase = `webchat:${config.agentId}`;
           // The embed may pin a transport; otherwise the agent's choice
           // (webchat.transport) applies, so a deployment can switch without
@@ -796,6 +857,7 @@ export function initWebchat(
   })();
   void configured.then(() => {
     if (destroyed) return;
+    if (options.previewError) return;
     if ((connectOn ?? 'open') === 'load' || isOpen) client.connect().catch(showError);
   });
 

@@ -17,8 +17,9 @@ release, so a website never builds or hosts SDK files; the second is your own
 agent, the only host you have to run. `projectToken` is the project's public
 embed token — copy it from the Chat Studio's **Embed** card, one per project.
 It names a project without exposing its id and is safe to put in a page: it
-selects who answers, it does not authorise anything on its own. Leave it out
-and the agent answers with its default project. (An [ai-agent](https://github.com/ali3nnn/ai-agent-studio)
+selects who answers, it does not authorise anything on its own. It is
+required: the agent has no default project, so without it the widget cannot
+start a session. (An [ai-agent](https://github.com/ali3nnn/ai-agent-studio)
 deployment can also serve the bundle from its own origin at `/webchatsdk.js` —
 see [Hosting the bundle yourself](#hosting-the-bundle-yourself).) The widget renders a launcher bubble and a chat
 panel inside a **shadow root** — the host page's CSS cannot reach in and the
@@ -122,7 +123,7 @@ git push --follow-tags
 | Option | Default | Purpose |
 |---|---|---|
 | `url` | — | Agent base URL (required; the string form of `initWebchat` sets this) |
-| `projectToken` | — | The project's public embed token (24 characters, `wc_…`), from the Chat Studio — sent to `POST /sessions` and `GET /widget/config`. Omit for the server's default project. |
+| `projectToken` | — | The project's public embed token (24 characters, `wc_…`), from the Chat Studio — sent to `POST /sessions` and `GET /widget/config`. Required. |
 | `title` / `subtitle` | agent name / none | Header text. The connection status is not shown; a failed connection says so on the error line. |
 | `greeting` | — | First bubble, rendered locally and never sent to the agent |
 | `placeholder` | `Type a message…` | Input placeholder |
@@ -190,7 +191,7 @@ import { createWebchatClient } from 'webchat-sdk';
 
 const client = createWebchatClient({
   url: 'http://localhost:3210',
-  projectToken: 'wc_7Qk2mZp9Ld4Xr8Ts1Vb6',   // omit for the default project
+  projectToken: 'wc_7Qk2mZp9Ld4Xr8Ts1Vb6',   // from the Chat Studio's Embed card
 });
 
 client.on('delta', ({ text }) => process.stdout.write(text));
@@ -297,7 +298,7 @@ does not surface is still available.
 | Option | Default | Purpose |
 |---|---|---|
 | `url` | — | Base URL of the agent container (required) |
-| `projectToken` | — | The project's public embed token (24 characters, `wc_…`), from the Chat Studio — sent to `POST /sessions`. Omit for the server's default project. |
+| `projectToken` | — | The project's public embed token (24 characters, `wc_…`), from the Chat Studio — sent to `POST /sessions`. Required unless `token` or your own `tokenProvider` names the project. |
 | `token` | — | A session token you already hold |
 | `tokenProvider` | POST `${url}/sessions` | How to obtain/refresh tokens |
 | `sessionId` | — | Resume an existing conversation |

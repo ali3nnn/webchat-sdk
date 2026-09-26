@@ -201,7 +201,7 @@ export class HttpTransport implements Transport {
     try {
       response = await this.request('/chat/stream', {
         method: 'POST',
-        body: JSON.stringify({ id: replyTo, message: event.text }),
+        body: JSON.stringify({ id: replyTo, message: event.text, ...(event.pageUrl ? { pageUrl: event.pageUrl } : {}) }),
         signal: controller.signal,
       });
     } catch (error) {
