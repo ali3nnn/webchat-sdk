@@ -321,7 +321,7 @@ export function initWebchat(
   const title = element('p', 'title');
   // Only a page's own subtitle is shown. The connection status ("online",
   // "disconnected", …) is not: visitors read it as noise, and a connection that
-  // actually fails still says so on the error line above the input.
+  // actually fails still says so, as a message from the agent.
   const subtitle = element('p', 'subtitle');
   subtitle.textContent = options.subtitle ?? '';
   subtitle.hidden = !options.subtitle;
@@ -340,9 +340,6 @@ export function initWebchat(
   const log = element('div', 'log');
   log.setAttribute('role', 'log');
   log.setAttribute('aria-live', 'polite');
-
-  const errorLine = element('p', 'error');
-  errorLine.hidden = true;
 
   const composer = element('form', 'composer');
   const input = element('input');
@@ -365,7 +362,7 @@ export function initWebchat(
   gate.append(gateCard, gateAccept);
   gate.hidden = true;
 
-  panel.append(header, disclaimer, log, errorLine, composer, watermark, gate);
+  panel.append(header, disclaimer, log, composer, watermark, gate);
   panel.hidden = !isOpen;
 
   const teaser = element('div', 'teaser');
@@ -681,10 +678,7 @@ export function initWebchat(
   }
 
   client.on('message', renderMessage);
-  client.on('ready', () => {
-    errorLine.hidden = true;
-    persist();
-  });
+  client.on('ready', persist);
   client.on('error', (error) => {
     // `busy` and per-turn failures already show up on the message itself.
     if (error.code === 'busy' || error.details?.messageId) return;
@@ -720,9 +714,24 @@ export function initWebchat(
   });
 
   // ── behaviour ──────────────────────────────────────────────────────────────
+  let notice: HTMLElement | undefined;
+  let noticeTurn = 0;
+  /**
+   * A failure that is not a reply (the connection, a send that never became a
+   * message) reads like one anyway: a message from the agent, in its own
+   * words. It is not part of the conversation, so nothing persists it; and
+   * while nothing else has been said since, a new failure rewrites it rather
+   * than stacking another under it.
+   */
   function showError(error: unknown): void {
-    errorLine.textContent = visitorMessage(error, errorLines(), undefined, undefined, settings.language);
-    errorLine.hidden = false;
+    const text = visitorMessage(error, errorLines(), undefined, undefined, settings.language);
+    const bubble = notice?.querySelector('.bubble');
+    if (notice?.isConnected && bubble && log.lastElementChild?.contains(notice) && notice.nextElementSibling === null) {
+      bubble.textContent = text;
+      scrollToEnd();
+      return;
+    }
+    notice = appendBubble('assistant', text, `notice-${(noticeTurn += 1)}`, new Date().toISOString());
   }
 
   // Never before the Studio's settings have arrived: they say which transport
@@ -766,7 +775,7 @@ export function initWebchat(
     for (const group of [...log.children]) if (!group.querySelector('.msg')) group.remove();
     openGroup = undefined;
     if (greetingGroup && !greetingGroup.node.isConnected) greetingGroup = undefined;
-    errorLine.hidden = true;
+    notice = undefined;
     if (isOpen) connect();
   }
 
@@ -794,7 +803,6 @@ export function initWebchat(
     const text = input.value.trim();
     if (text === '' || !privacyAccepted) return;
     input.value = '';
-    errorLine.hidden = true;
     if (options.previewError) {
       simulateOutage(text);
       return;
