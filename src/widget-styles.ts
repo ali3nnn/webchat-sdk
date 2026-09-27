@@ -106,7 +106,6 @@ export const WIDGET_CSS = `
 .msg[data-role="user"] .bubble { background: var(--wc-user-bg); color: var(--wc-user-fg); }
 .msg[data-role="user"]:last-child .bubble { border-bottom-right-radius: 6px; }
 .root[data-bubbles="wide"] .bubble { border-radius: 10px; padding: 12px 16px; }
-.msg[data-status="error"] .bubble { background: #ffe3e3; color: #b02525; }
 
 /* Rendered Markdown brings its own blocks, so the pre-wrap fallback steps aside. */
 .bubble.md { white-space: normal; }
@@ -161,6 +160,4 @@ export const WIDGET_CSS = `
 .gate h3 { margin: 0 0 8px; font-size: 15px; }
 .gate p { margin: 0; white-space: pre-wrap; }
 .gate button { border: 0; border-radius: 12px; padding: 12px; cursor: pointer; background: var(--wc-accent); color: var(--wc-on-accent); font-size: 14px; font-weight: 600; }
-
-.error { margin: 0; padding: 0 14px 10px; font-size: 12px; color: #e03131; }
 `;
