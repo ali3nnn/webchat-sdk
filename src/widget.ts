@@ -823,6 +823,10 @@ export function initWebchat(
   if (options.fetchConfig === false) markReady();
   else revealTimer = setTimeout(markReady, REVEAL_TIMEOUT_MS);
 
+  // The agent refused the project outright (built on a paid plan, now on a
+  // free one): the widget removes itself rather than show a launcher that can
+  // only fail.
+  let disabledByAgent = false;
   const configured = (async () => {
     if (options.fetchConfig !== false) {
       try {
@@ -830,6 +834,10 @@ export function initWebchat(
         const response = await (clientOptions.fetch ?? globalThis.fetch)(`${options.url.replace(/\/$/, '')}/widget/config${query}`, {
           headers: clientOptions.headers,
         });
+        if (response.status === 403) {
+          const refusal = (await response.json().catch(() => null)) as { code?: string } | null;
+          disabledByAgent = refusal?.code === 'project_disabled';
+        }
         if (response.ok) {
           const config = (await response.json()) as { agentId?: string; webchat?: WebchatSettings; transport?: string };
           if (config.webchat) settings = mergeSettings(DEFAULT_SETTINGS, config.webchat, options.settings, shortcutOverrides);
@@ -854,6 +862,14 @@ export function initWebchat(
       }
     }
     if (destroyed) return;
+    if (disabledByAgent) {
+      console.info('[webchat] This agent is not available on its current plan, so the chat is not shown.');
+      destroyed = true;
+      clearTimeout(revealTimer);
+      client.destroy();
+      host.remove();
+      return;
+    }
     applySettings();
     markReady();
     restoreConversation();
