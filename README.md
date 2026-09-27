@@ -149,7 +149,8 @@ teaser message, AI disclaimer, input/send texts, timestamps, privacy notice,
 persistence across pages, the "New chat" button, thumbs up/down feedback, and
 the "Powered by" line under the composer (`watermark: { enabled, html }` — on by
 default; its HTML keeps only links and bold/italic, and a bare-domain `href`
-gets `https://`).
+gets `https://`). On a plan that requires the watermark the agent sends it
+`locked`, and the widget then shows the agent's line whatever `settings` say.
 The widget fetches them before connecting and stays invisible until they land
 (at most 1.2s), so the launcher is never painted in the built-in blue before
 switching to the agent's own colour. `settings` overrides any of them per embed

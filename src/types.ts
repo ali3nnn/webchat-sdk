@@ -51,7 +51,16 @@ export interface WebchatSettings {
    * mailto — a bare domain gets https://) and `<b>`/`<strong>`/`<i>`/`<em>`;
    * anything else is shown as its text.
    */
-  watermark: { enabled: boolean; html: string };
+  watermark: {
+    enabled: boolean;
+    html: string;
+    /**
+     * Sent by the agent when the project's plan requires its watermark. The
+     * agent's line then outranks this embed's `settings`: it cannot be hidden
+     * or reworded from the snippet.
+     */
+    locked?: boolean;
+  };
   inputPlaceholder: string;
   /** Label on the send button, or its tooltip/screen-reader name when it shows the icon. */
   sendButtonText: string;
