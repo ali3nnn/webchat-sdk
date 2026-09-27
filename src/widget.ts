@@ -833,6 +833,9 @@ export function initWebchat(
         if (response.ok) {
           const config = (await response.json()) as { agentId?: string; webchat?: WebchatSettings; transport?: string };
           if (config.webchat) settings = mergeSettings(DEFAULT_SETTINGS, config.webchat, options.settings, shortcutOverrides);
+          // A plan that requires the agent's watermark marks it locked, and then
+          // it is the one shown — the embed's own settings do not get the last word.
+          if (config.webchat?.watermark?.locked) settings = { ...settings, watermark: { ...config.webchat.watermark } };
           const lines = toneLines(settings.errorMessages);
           if (lines.length > 0) storageWrite(errorMessagesKey, lines);
           if (config.agentId && !options.storageKey && !options.projectToken) storageBase = `webchat:${config.agentId}`;
