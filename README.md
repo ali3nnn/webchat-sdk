@@ -333,7 +333,15 @@ Events (`client.on(name, handler)` returns an unsubscribe function):
 
 `token_failed`, `token_expired`, `auth_failed`, `agent_mismatch`,
 `protocol_mismatch`, `connect_failed`, `disconnected`, `timeout`, `busy`,
-`cancelled`, `invalid_message`, `agent_error`.
+`cancelled`, `invalid_message`, `agent_error`, `quota_exceeded`,
+`session_quota_exceeded`.
+
+The last two mean the site owner's plan has run out for the month:
+`session_quota_exceeded` when a brand-new conversation is refused (by
+`POST /sessions`, or at its first question) — one already under way carries on
+— and `quota_exceeded` when a question is. The widget tells the visitor so in
+the project's language (English, German, Romanian, French, Spanish or Italian;
+English otherwise) instead of showing a "try again in a moment" line.
 
 ## Wire protocol
 

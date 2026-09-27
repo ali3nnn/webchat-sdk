@@ -54,7 +54,11 @@ export interface ChatCompleteEvent {
 export interface ChatErrorEvent {
   messageId?: string;
   replyTo?: string;
-  code: 'agent_error' | 'invalid_message' | 'busy' | 'cancelled';
+  /**
+   * `quota_exceeded` / `session_quota_exceeded`: the site owner's plan has no
+   * questions / new conversations left this month; nothing reached the model.
+   */
+  code: 'agent_error' | 'invalid_message' | 'busy' | 'cancelled' | 'quota_exceeded' | 'session_quota_exceeded';
   message: string;
 }
 

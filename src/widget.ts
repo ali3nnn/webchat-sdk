@@ -1,6 +1,8 @@
 import { WebchatClient } from './client.js';
 import { isTransportName } from './transport-choice.js';
 import { pickLine, toneLines } from './error-messages.js';
+import { WebchatError } from './errors.js';
+import { isLimitCode, limitMessage } from './limit-messages.js';
 import { renderMarkdown } from './markdown.js';
 import { renderWatermark } from './watermark.js';
 import type {
@@ -187,10 +189,13 @@ function formatTime(iso: string, mode: WebchatSettings['timestamps']): string {
  * to the console. `seed` keeps one failed message on one line across
  * re-renders; see error-messages.ts for where the lines come from.
  */
-function visitorMessage(error: unknown, lines: readonly string[], seed?: string): string {
+function visitorMessage(error: unknown, lines: readonly string[], seed?: string, code?: unknown, language?: string): string {
   // A failed reply re-renders with every update; its error was already
   // reported by the client's `error` event when it happened.
   if (seed === undefined) console.warn('[webchat]', error);
+  // The owner's plan ran out: not a hiccup, so not "try again in a moment".
+  const limit = code ?? (error instanceof WebchatError ? error.code : undefined);
+  if (isLimitCode(limit)) return limitMessage(limit, language);
   return pickLine(lines, seed);
 }
 
@@ -620,7 +625,7 @@ export function initWebchat(
     } else {
       entry.bubble.classList.remove('md');
       // A failed reply never shows why it failed — see visitorMessage().
-      entry.bubble.textContent = message.error !== undefined ? visitorMessage(message.error, errorLines(), message.id) : message.text;
+      entry.bubble.textContent = message.error !== undefined ? visitorMessage(message.error, errorLines(), message.id, message.errorCode, settings.language) : message.text;
     }
 
     entry.tools.replaceChildren(
@@ -716,7 +721,7 @@ export function initWebchat(
 
   // ── behaviour ──────────────────────────────────────────────────────────────
   function showError(error: unknown): void {
-    errorLine.textContent = visitorMessage(error, errorLines());
+    errorLine.textContent = visitorMessage(error, errorLines(), undefined, undefined, settings.language);
     errorLine.hidden = false;
   }
 
@@ -797,7 +802,10 @@ export function initWebchat(
     sendButton.disabled = true;
     void client
       .send(text)
-      .catch(showError)
+      // A failure tied to a message is already shown on it, as for `error` events.
+      .catch((error: unknown) => {
+        if (!(error instanceof WebchatError && error.details?.messageId)) showError(error);
+      })
       .finally(() => {
         sendButton.disabled = false;
       });
