@@ -475,6 +475,7 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     if (message) {
       message.status = 'error';
       message.error = event.message;
+      message.errorCode = event.code;
       this.emit('message', { ...message, tools: [...message.tools] });
     }
 

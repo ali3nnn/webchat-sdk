@@ -151,8 +151,6 @@ the "Powered by" line under the composer (`watermark: { enabled, html }` — on 
 default; its HTML keeps only links and bold/italic, and a bare-domain `href`
 gets `https://`). On a plan that requires the watermark the agent sends it
 `locked`, and the widget then shows the agent's line whatever `settings` say.
-A project the agent has disabled (built on Pro, now on Free) answers with
-`project_disabled`, and the widget then does not appear at all.
 The widget fetches them before connecting and stays invisible until they land
 (at most 1.2s), so the launcher is never painted in the built-in blue before
 switching to the agent's own colour. `settings` overrides any of them per embed
@@ -335,7 +333,15 @@ Events (`client.on(name, handler)` returns an unsubscribe function):
 
 `token_failed`, `token_expired`, `auth_failed`, `agent_mismatch`,
 `protocol_mismatch`, `connect_failed`, `disconnected`, `timeout`, `busy`,
-`cancelled`, `invalid_message`, `agent_error`.
+`cancelled`, `invalid_message`, `agent_error`, `quota_exceeded`,
+`session_quota_exceeded`.
+
+The last two mean the site owner's plan has run out for the month:
+`session_quota_exceeded` when a brand-new conversation is refused (by
+`POST /sessions`, or at its first question) — one already under way carries on
+— and `quota_exceeded` when a question is. The widget tells the visitor so in
+the project's language (English, German, Romanian, French, Spanish or Italian;
+English otherwise) instead of showing a "try again in a moment" line.
 
 ## Wire protocol
 

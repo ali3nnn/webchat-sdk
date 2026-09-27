@@ -12,6 +12,10 @@ export type WebchatErrorCode =
   | 'invalid_message'
   /** An option passed to createWebchatClient / initWebchat has no meaning. */
   | 'invalid_options'
+  /** The site owner's plan allows no more questions this month. */
+  | 'quota_exceeded'
+  /** The site owner's plan allows no more new conversations this month; one under way carries on. */
+  | 'session_quota_exceeded'
   | 'agent_error';
 
 /** Every rejection and `error` event from the SDK is one of these. */

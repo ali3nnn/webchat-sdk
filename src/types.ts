@@ -143,6 +143,8 @@ export interface WebchatMessage {
   /** Tool activity the agent reported while producing this message. */
   tools: WebchatToolActivity[];
   error?: string;
+  /** Why it failed, when the agent said (`quota_exceeded`, `agent_error`, …). */
+  errorCode?: string;
   usage?: { inputTokens?: number; outputTokens?: number };
   /** The visitor's rating of an assistant message, when feedback is enabled. */
   feedback?: 'up' | 'down' | null;

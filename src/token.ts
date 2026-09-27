@@ -52,6 +52,14 @@ export function createDefaultTokenProvider(options: {
       throw new WebchatError(`Could not reach ${endpoint}.`, 'token_failed', { cause: error });
     }
 
+    if (response.status === 429) {
+      // The owner's plan has no new conversations left this month. Saying so
+      // (rather than token_failed) lets the widget tell the visitor, not retry.
+      const refusal = (await response.json().catch(() => null)) as { code?: unknown } | null;
+      if (refusal?.code === 'session_quota_exceeded') {
+        throw new WebchatError('No new conversations are available this month.', 'session_quota_exceeded');
+      }
+    }
     if (!response.ok) {
       throw new WebchatError(
         `Token request to ${endpoint} failed with ${response.status}.`,
