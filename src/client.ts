@@ -9,7 +9,7 @@ import {
   type ChatToolEvent,
   type SessionReadyEvent,
 } from './protocol.js';
-import { createDefaultTokenProvider } from './token.js';
+import { createDefaultTokenProvider, pageUrl } from './token.js';
 import { HttpTransport } from './transport-http.js';
 import { SocketTransport } from './transport-socket.js';
 import { planTransport, readTransportOption } from './transport-choice.js';
@@ -184,7 +184,8 @@ export class WebchatClient extends Emitter<WebchatEvents> {
       }, this.options.replyTimeoutMs ?? 120_000);
 
       this.pending.set(id, { resolve, reject, timer });
-      transport.send({ id, text: trimmed });
+      const page = pageUrl();
+      transport.send({ id, text: trimmed, ...(page ? { pageUrl: page } : {}) });
     });
   }
 

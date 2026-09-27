@@ -2,6 +2,7 @@ export { initWebchat, type WebchatWidget, type WebchatWidgetOptions } from './wi
 export { WebchatClient, createWebchatClient } from './client.js';
 export { WebchatHub, createWebchatHub, type AgentDescriptor, type WebchatHubOptions } from './hub.js';
 export { WebchatError, type WebchatErrorCode } from './errors.js';
+export type { ErrorTone, WebchatErrorMessages } from './error-messages.js';
 export { createDefaultTokenProvider } from './token.js';
 export { PROTOCOL_VERSION } from './protocol.js';
 export { HttpTransport } from './transport-http.js';

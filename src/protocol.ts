@@ -63,6 +63,12 @@ export interface ChatSendEvent {
   /** Client-generated id, echoed back as `replyTo`. */
   id: string;
   text: string;
+  /**
+   * The page the visitor is on when they send it (origin + path), so a
+   * conversation that follows them across a site can say where each message
+   * was written. Optional: agents and widgets older than it simply omit it.
+   */
+  pageUrl?: string;
 }
 
 export interface ChatCancelEvent {

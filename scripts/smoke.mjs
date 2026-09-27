@@ -1,11 +1,11 @@
 /**
  * End-to-end check against a running ai-agent.
  *
- *   cd ../ai-agent && LLM_PROVIDER=mock AGENT_ID=support PORT=3210 npm start
- *   cd ../webchat-sdk && npm run build && AGENT_URL=http://localhost:3210 npm run smoke
+ *   cd ../ai-agent-backend && PORT=3210 npm run dev:local
+ *   cd ../webchat-sdk && npm run build && AGENT_URL=http://localhost:3210 PROJECT_TOKEN=wc_… npm run smoke
  *
- * PROJECT_TOKEN picks a specific project (copy it from the Chat Studio's embed
- * snippet); without it the agent answers with its default project.
+ * PROJECT_TOKEN is required — the agent has no default project. Copy it from
+ * the Chat Studio's Embed card.
  * TRANSPORT=http runs the same checks over POST /chat/stream instead of
  * socket.io.
  */
@@ -13,8 +13,8 @@ import assert from 'node:assert/strict';
 import { createWebchatClient, createWebchatHub } from '../dist/index.js';
 
 const url = process.env.AGENT_URL ?? 'http://localhost:3210';
-const agentId = process.env.AGENT_ID ?? 'support';
 const projectToken = process.env.PROJECT_TOKEN;
+if (!projectToken) throw new Error('Set PROJECT_TOKEN to a project\'s embed token (the agent has no default project).');
 // websocket | polling | http; unset is auto (websocket, falling back to polling).
 const transport = process.env.TRANSPORT || undefined;
 console.log(`transport: ${transport ?? 'auto'}`);
@@ -26,7 +26,8 @@ client.on('tool', (tool) => events.push(`tool:${tool.name}:${tool.status}`));
 client.on('delta', () => events.push('delta'));
 
 const ready = await client.connect();
-if (!projectToken) assert.equal(ready.agentId, agentId, 'handshake reports the expected agent');
+const agentId = ready.agentId;
+assert.ok(agentId, 'handshake names the project');
 assert.ok(ready.sessionId, 'handshake carries a session id');
 console.log(`connected to ${ready.agentName} (${ready.provider}/${ready.model})`);
 

@@ -1,5 +1,6 @@
 import type { SessionReadyEvent } from './protocol.js';
 import type { WebchatError } from './errors.js';
+import type { WebchatErrorMessages } from './error-messages.js';
 
 /**
  * How a project's webchat presents itself — configured in the Chat Studio and
@@ -8,6 +9,18 @@ import type { WebchatError } from './errors.js';
  */
 export interface WebchatSettings {
   agentName: string;
+  /**
+   * The language the project's greetings are in (ISO 639-1, detected by the
+   * agent), or `other` for a language outside Europe's national ones. The
+   * error messages below are written in it.
+   */
+  language: string;
+  /**
+   * What a visitor reads when something goes wrong: three tones of up to three
+   * lines, and which tone is in use. Absent from agents older than it; the
+   * widget then uses the lines it remembered, or English ones.
+   */
+  errorMessages?: WebchatErrorMessages;
   /** The agent's one picture — image URL or data URL; empty = an initials badge. */
   avatarUrl: string;
   /** Image on the floating launcher; empty = `launcherIcon`, `avatarUrl`, or the built-in bubble. */
@@ -134,9 +147,9 @@ export interface WebchatClientOptions {
   url: string;
   /**
    * The project's public embed token, copied from the Chat Studio. It selects
-   * which project on the server answers; omit it for the server's default
-   * project. Safe to put in a page — it identifies a project, it does not
-   * authorise anything on its own.
+   * which project on the server answers, and is required unless `token` or a
+   * `tokenProvider` of your own names the project. Safe to put in a page — it
+   * identifies a project, it does not authorise anything on its own.
    */
   projectToken?: string;
   /** A session token you already have (minted by your backend). */
