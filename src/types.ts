@@ -74,8 +74,10 @@ export interface WebchatSettings {
   /** Keep the transcript in localStorage and resume the session across pages. */
   persistConversation: boolean;
   showNewChatButton: boolean;
-  /** Label on the header's "new chat" button; blank falls back to "New chat". */
+  /** The header's "new chat" button is an icon; this is its tooltip and accessible name. Blank falls back to "Start a new chat". */
   newChatButtonText: string;
+  /** Which glyph that button wears ('bubble-plus', 'square-plus', 'compose', 'restart'); unknown falls back to 'bubble-plus'. */
+  newChatIcon: string;
   feedbackEnabled: boolean;
   position: 'bottom-right' | 'bottom-left';
 }

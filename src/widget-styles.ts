@@ -73,8 +73,6 @@ export const WIDGET_CSS = `
 .icon-button { border: 0; background: transparent; color: inherit; opacity: .7; cursor: pointer; font-size: 18px; line-height: 1; padding: 4px 6px; border-radius: 8px; }
 .icon-button:hover { opacity: 1; background: rgba(127, 127, 127, .15); }
 .icon-button svg { width: 18px; height: 18px; display: block; }
-.newchat { flex: none; white-space: nowrap; border: 1px solid currentColor; background: transparent; color: inherit; opacity: .8; cursor: pointer; font-size: 12px; padding: 5px 10px; border-radius: 999px; }
-.newchat:hover { opacity: 1; }
 
 .watermark { font-size: 11px; color: var(--wc-muted); text-align: center; padding: 0 12px 10px; margin-top: -4px; background: var(--wc-bg); }
 .watermark a { color: inherit; font-weight: 600; text-decoration: none; }
