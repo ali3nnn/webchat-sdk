@@ -87,6 +87,9 @@ export const LAUNCHER_ICONS: Record<string, string> = {
 
 const CHAT_ICON = strokeIcon(LAUNCHER_ICONS.bubble!);
 
+/** The header's close button. An SVG, not a × character, so it sits centred and matches the new chat icon's weight. */
+const CLOSE_ICON = strokeIcon('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>');
+
 /**
  * Glyphs for the header's "new chat" button; `settings.newChatIcon` names one.
  * The Chat Studio offers the same ids, and an id this build does not know falls
@@ -340,7 +343,8 @@ export function initWebchat(
   const spacer = element('div', 'spacer');
   const newChatButton = element('button', 'icon-button');
   newChatButton.type = 'button';
-  const closeButton = element('button', 'icon-button', '×');
+  const closeButton = element('button', 'icon-button');
+  closeButton.innerHTML = CLOSE_ICON;
   closeButton.setAttribute('aria-label', 'Close chat');
   closeButton.type = 'button';
   header.append(headerAvatar, titles, spacer, newChatButton, closeButton);

@@ -70,9 +70,9 @@ export const WIDGET_CSS = `
 .title { font-size: 14px; font-weight: 600; margin: 0; }
 .subtitle { font-size: 12px; opacity: .7; margin: 1px 0 0; display: flex; align-items: center; gap: 6px; }
 .header .spacer { margin-left: auto; }
-.icon-button { border: 0; background: transparent; color: inherit; opacity: .7; cursor: pointer; font-size: 18px; line-height: 1; padding: 4px 6px; border-radius: 8px; }
+.icon-button { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 0; background: transparent; color: inherit; opacity: .7; cursor: pointer; border-radius: 10px; }
 .icon-button:hover { opacity: 1; background: rgba(127, 127, 127, .15); }
-.icon-button svg { width: 18px; height: 18px; display: block; }
+.icon-button svg { width: 21px; height: 21px; display: block; }
 
 .watermark { font-size: 11px; color: var(--wc-muted); text-align: center; padding: 0 12px 10px; margin-top: -4px; background: var(--wc-bg); }
 .watermark a { color: inherit; font-weight: 600; text-decoration: none; }
