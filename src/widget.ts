@@ -87,6 +87,20 @@ export const LAUNCHER_ICONS: Record<string, string> = {
 
 const CHAT_ICON = strokeIcon(LAUNCHER_ICONS.bubble!);
 
+/**
+ * Glyphs for the header's "new chat" button; `settings.newChatIcon` names one.
+ * The Chat Studio offers the same ids, and an id this build does not know falls
+ * back to `bubble-plus`: a conversation, plus one — what the button does.
+ */
+export const NEW_CHAT_ICONS: Record<string, string> = {
+  'bubble-plus': LAUNCHER_ICONS.bubble! + '<path d="M12 8.5v6"/><path d="M9 11.5h6"/>',
+  'square-plus': LAUNCHER_ICONS.square! + '<path d="M12 7v6"/><path d="M9 10h6"/>',
+  compose:
+    '<path d="M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6"/>' +
+    '<path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8l-3.8 1 1-3.8z"/>',
+  restart: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+};
+
 /** How long the widget waits for GET /widget/config before showing itself anyway. */
 const REVEAL_TIMEOUT_MS = 1200;
 const SEND_ICON =
@@ -121,7 +135,8 @@ export const DEFAULT_SETTINGS: WebchatSettings = {
   privacy: { enabled: false, title: 'Before we start', content: '', acceptLabel: 'I understand' },
   persistConversation: true,
   showNewChatButton: true,
-  newChatButtonText: 'New chat',
+  newChatButtonText: 'Start a new chat',
+  newChatIcon: 'bubble-plus',
   feedbackEnabled: true,
   position: 'bottom-right',
 };
@@ -215,14 +230,14 @@ function storageRead<T>(key: string): T | undefined {
     return undefined;
   }
 }
-function storageWrite(key: string, value: unknown): void {
+function writeStorage(key: string, value: unknown): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
     /* storage unavailable or full */
   }
 }
-function storageRemove(key: string): void {
+function removeStorage(key: string): void {
   try {
     localStorage.removeItem(key);
   } catch {
@@ -231,14 +246,10 @@ function storageRemove(key: string): void {
 }
 
 /** One id per browser, shared by every agent on the site; lets the Studio count returning visitors. */
-function visitorId(): string {
-  const key = 'webchat:userId';
-  const existing = storageRead<string>(key);
-  if (existing) return existing;
-  const id =
-    globalThis.crypto?.randomUUID?.() ?? `u-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  storageWrite(key, id);
-  return id;
+const VISITOR_ID_KEY = 'webchat:userId';
+/** A new visitor id. Not stored here — nothing is, until the first message (see commitStorage). */
+function freshVisitorId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `u-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /**
@@ -327,7 +338,7 @@ export function initWebchat(
   subtitle.hidden = !options.subtitle;
   titles.append(title, subtitle);
   const spacer = element('div', 'spacer');
-  const newChatButton = element('button', 'newchat', 'New chat');
+  const newChatButton = element('button', 'icon-button');
   newChatButton.type = 'button';
   const closeButton = element('button', 'icon-button', '×');
   closeButton.setAttribute('aria-label', 'Close chat');
@@ -389,7 +400,20 @@ export function initWebchat(
     position: _pos, target: _target, launcher: _l, open: _o, connectOn, accent: _a, storageKey: _k, previewError: _pe,
     ...clientOptions
   } = options;
-  const userId = clientOptions.userId ?? visitorId();
+  // Nothing is written to the visitor's browser until they send their first
+  // message (see commitStorage). A returning visitor who has engaged before is
+  // recognised by the id that first message left behind, so they still resume
+  // their conversation and count as returning. Reads stay open throughout;
+  // only writes wait, through these two wrappers that shadow the module helpers.
+  const rememberedUserId = clientOptions.userId ? undefined : storageRead<string>(VISITOR_ID_KEY);
+  const userId = clientOptions.userId ?? rememberedUserId ?? freshVisitorId();
+  let canStore = Boolean(rememberedUserId);
+  const storageWrite = (key: string, value: unknown): void => {
+    if (canStore) writeStorage(key, value);
+  };
+  const storageRemove = (key: string): void => {
+    if (canStore) removeStorage(key);
+  };
 
   // The storage namespace is per agent; until the config tells us the agent id
   // we use whatever the embed said.
@@ -444,8 +468,12 @@ export function initWebchat(
     title.textContent = settings.agentName;
     renderAvatar(headerAvatar, settings.avatarUrl);
     headerAvatar.hidden = !settings.showAvatarInHeader;
-    newChatButton.textContent = settings.newChatButtonText.trim() || 'New chat';
-    newChatButton.hidden = !settings.showNewChatButton;
+    // An icon: the configured text is its tooltip and accessible name.
+    newChatButton.innerHTML = strokeIcon(NEW_CHAT_ICONS[settings.newChatIcon] ?? NEW_CHAT_ICONS['bubble-plus']!);
+    const newChatLabel = settings.newChatButtonText.trim() || 'Start a new chat';
+    newChatButton.setAttribute('aria-label', newChatLabel);
+    newChatButton.title = newChatLabel;
+    syncNewChatButton();
 
     disclaimer.textContent = settings.disclaimer.text;
     disclaimer.hidden = !settings.disclaimer.enabled || !settings.disclaimer.text.trim();
@@ -498,6 +526,12 @@ export function initWebchat(
   }
 
   /** Text label, or the paper-plane icon with the label as its accessible name. */
+  /** Starting over means nothing before the visitor has said anything, so the button waits for their first message. */
+  function syncNewChatButton(): void {
+    // Read off the log rather than the client: the Studio's outage preview draws messages the client never sees.
+    newChatButton.hidden = !settings.showNewChatButton || !log.querySelector('.msg[data-role="user"]');
+  }
+
   function renderSendButton(): void {
     const label = settings.sendButtonText.trim() || 'Send';
     const asIcon = settings.sendButtonStyle === 'icon';
@@ -593,6 +627,7 @@ export function initWebchat(
     meta.hidden = role === 'assistant' || settings.timestamps === 'hidden';
     group.body.append(wrapper);
     rendered.set(id, { wrapper, bubble, tools, meta, feedback, time });
+    if (role === 'user') syncNewChatButton();
     scrollToEnd();
     return wrapper;
   }
@@ -661,6 +696,23 @@ export function initWebchat(
     const messages = client.messages.filter((message) => message.status === 'complete' || message.status === 'error');
     if (!sessionId || messages.length === 0) return;
     storageWrite(conversationKey(), { sessionId, messages, updatedAt: new Date().toISOString() } satisfies StoredConversation);
+  }
+
+  /**
+   * The first message is the moment the visitor engages — and the first moment
+   * anything is written to their browser. It opens storage, then lays down the
+   * visitor id (so the next visit resumes and counts as returning), remembers an
+   * accepted privacy notice, caches the agent's error lines for a future outage,
+   * and persists the conversation. Every later write flows through on its own.
+   */
+  function commitStorage(): void {
+    if (canStore) return;
+    canStore = true;
+    if (!clientOptions.userId) storageWrite(VISITOR_ID_KEY, userId);
+    if (settings.privacy.enabled && privacyAccepted) storageWrite(privacyKey(), new Date().toISOString());
+    const lines = toneLines(settings.errorMessages);
+    if (lines.length > 0) storageWrite(errorMessagesKey, lines);
+    persist();
   }
 
   function restoreConversation(): void {
@@ -772,10 +824,14 @@ export function initWebchat(
         rendered.delete(id);
       }
     }
+    // The outage preview's bubbles are not tracked in `rendered`; clear them too.
+    const greetings = new Set([...rendered.values()].map((entry) => entry.wrapper));
+    for (const node of log.querySelectorAll<HTMLElement>('.msg')) if (!greetings.has(node)) node.remove();
     for (const group of [...log.children]) if (!group.querySelector('.msg')) group.remove();
     openGroup = undefined;
     if (greetingGroup && !greetingGroup.node.isConnected) greetingGroup = undefined;
     notice = undefined;
+    syncNewChatButton();
     if (isOpen) connect();
   }
 
@@ -807,6 +863,8 @@ export function initWebchat(
       simulateOutage(text);
       return;
     }
+    // First real send: this is when the visitor's browser is first written to.
+    commitStorage();
     sendButton.disabled = true;
     void client
       .send(text)
