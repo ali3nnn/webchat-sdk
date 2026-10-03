@@ -136,6 +136,21 @@ export const WIDGET_CSS = `
 .typing span:nth-child(2) { animation-delay: .15s; }
 .typing span:nth-child(3) { animation-delay: .3s; }
 @keyframes wc-bounce { 0%, 60%, 100% { opacity: .3; } 30% { opacity: 1; } }
+/* Phones: an open floating chat takes the whole screen. The launcher hides
+   (the header's close button closes it), and the input is 16px so iOS does
+   not zoom the page in when it is focused. 100dvh keeps the composer above
+   the browser's own toolbars; 100vh is the fallback for older browsers. */
+@media (max-width: 600px) {
+  .root[data-inline="false"][data-open="true"] { inset: 0; gap: 0; }
+  .root[data-inline="false"][data-open="true"] .panel {
+    width: 100vw; height: 100vh; height: 100dvh; border-radius: 0; box-shadow: none;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .root[data-inline="false"][data-open="true"] .header { padding-top: calc(12px + env(safe-area-inset-top)); }
+  .root[data-inline="false"][data-open="true"] .launcher,
+  .root[data-inline="false"][data-open="true"] .teaser { display: none; }
+  .root[data-inline="false"][data-open="true"] .composer input { font-size: 16px; }
+}
 @media (prefers-reduced-motion: reduce) { .typing span { animation: none; } .launcher { transition: none; } .teaser { animation: none; } }
 
 .composer { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--wc-line); background: var(--wc-bg); }
