@@ -323,6 +323,7 @@ export function initWebchat(
 
   const root = element('div', 'root');
   root.dataset.inline = String(inline);
+  root.dataset.open = String(isOpen);
   // Kept invisible until the settings are final; see `markReady` below.
   root.dataset.ready = 'false';
 
@@ -799,8 +800,31 @@ export function initWebchat(
     void configured.then(() => client.connect()).catch(showError);
   }
 
+  /**
+   * Full screen on a phone (see the max-width rule in widget-styles.ts) means
+   * the page behind must not scroll under the visitor's finger, so its
+   * overflow is held while the chat is open there and handed back after.
+   */
+  const phone = typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 600px)') : undefined;
+  let heldOverflow: string | undefined;
+  function syncPageScroll(): void {
+    const hold = isOpen && !inline && !destroyed && Boolean(phone?.matches);
+    const page = document.documentElement;
+    if (hold && heldOverflow === undefined) {
+      heldOverflow = page.style.overflow;
+      page.style.overflow = 'hidden';
+    } else if (!hold && heldOverflow !== undefined) {
+      page.style.overflow = heldOverflow;
+      heldOverflow = undefined;
+    }
+  }
+  phone?.addEventListener?.('change', syncPageScroll);
+  syncPageScroll();
+
   function open(): void {
     isOpen = true;
+    root.dataset.open = 'true';
+    syncPageScroll();
     panel.hidden = false;
     teaser.hidden = true;
     launcher.setAttribute('aria-label', 'Close chat');
@@ -810,6 +834,8 @@ export function initWebchat(
 
   function close(): void {
     isOpen = false;
+    root.dataset.open = 'false';
+    syncPageScroll();
     panel.hidden = true;
     launcher.setAttribute('aria-label', 'Open chat');
   }
@@ -955,6 +981,8 @@ export function initWebchat(
       destroyed = true;
       clearTimeout(teaserTimer);
       clearTimeout(revealTimer);
+      syncPageScroll();
+      phone?.removeEventListener?.('change', syncPageScroll);
       client.destroy();
       host.remove();
     },
