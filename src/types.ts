@@ -44,7 +44,7 @@ export interface WebchatSettings {
   bubbleStyle: 'round' | 'wide';
   /** Pop-up next to the launcher when the chat was not started after `delayMs`. */
   teaser: { enabled: boolean; text: string; delayMs: number };
-  colors: { launcher: string; userBubble: string; assistantBubble: string; background: string; header: string };
+  colors: { launcher: string; userBubble: string; assistantBubble: string; background: string; header: string; headerIcon: string };
   disclaimer: { enabled: boolean; text: string };
   /**
    * The line under the composer. `html` may hold links (`<a href>`, http(s) or
