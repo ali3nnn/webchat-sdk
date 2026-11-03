@@ -14,6 +14,8 @@ export const WIDGET_CSS = `
   --wc-line: rgba(20, 22, 26, .09);
   --wc-header-bg: #ffffff;
   --wc-header-fg: #14161a;
+  --wc-header-icon-bg: #3b6cff;
+  --wc-header-icon-fg: #ffffff;
   --wc-user-bg: #3b6cff;
   --wc-user-fg: #ffffff;
   --wc-assistant-bg: #f1f4f9;
@@ -67,6 +69,7 @@ export const WIDGET_CSS = `
 .header { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--wc-header-bg); color: var(--wc-header-fg); border-bottom: 1px solid var(--wc-line); }
 .avatar { width: 36px; height: 36px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--wc-accent); color: var(--wc-on-accent); font-size: 14px; font-weight: 600; overflow: hidden; }
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
+.header .avatar { background: var(--wc-header-icon-bg); color: var(--wc-header-icon-fg); }
 .title { font-size: 14px; font-weight: 600; margin: 0; }
 .subtitle { font-size: 12px; opacity: .7; margin: 1px 0 0; display: flex; align-items: center; gap: 6px; }
 .header .spacer { margin-left: auto; }
