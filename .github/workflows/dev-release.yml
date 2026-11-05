@@ -1,0 +1,50 @@
+# Publishes the `dev` branch's widget at one fixed address, for the dev Brainigy
+# (ai-agent-backend's config/dev.yml points webchat.scriptUrl here):
+#
+#   https://github.com/ali3nnn/webchat-sdk/releases/download/dev-latest/webchatsdk.js
+#
+# A pre-release that never becomes `latest`, so production and customer embeds,
+# which load releases/latest, stay on what release.yml last cut from main. Its
+# tag does not move with each push: the release notes name the commit it holds.
+name: Dev release
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# The later push wins: an older bundle has nothing left to offer.
+concurrency:
+  group: dev-release
+  cancel-in-progress: true
+
+jobs:
+  dev-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+      - name: Replace the bundle on the dev-latest pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes="Built from $GITHUB_SHA (dev branch, package.json version $(node -p "require('./package.json').version")). Not for production."
+          if ! gh release view dev-latest >/dev/null 2>&1; then
+            gh release create dev-latest --prerelease --latest=false --target "$GITHUB_SHA" --title "dev-latest" --notes "$notes"
+          fi
+          gh release upload dev-latest dist/webchatsdk.js dist/webchatsdk.js.map --clobber
+          gh release edit dev-latest --prerelease --latest=false --notes "$notes"
