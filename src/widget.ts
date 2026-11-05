@@ -653,18 +653,21 @@ export function initWebchat(
     entry.wrapper.dataset.status = message.status;
     entry.time.textContent = formatTime(message.createdAt, settings.timestamps);
 
+    // A failed reply never shows why it failed — see visitorMessage().
+    const failure = message.error !== undefined ? visitorMessage(message.error, errorLines(), message.id, message.errorCode, settings.language) : undefined;
     if (message.status === 'streaming' && message.text === '') {
       // Nothing to show yet — the agent is thinking or running a tool.
       entry.bubble.classList.remove('md');
       entry.bubble.innerHTML = '<span class="typing"><span></span><span></span><span></span></span>';
-    } else if (message.error === undefined && message.role === 'assistant') {
+    } else if (message.role === 'assistant' && (failure === undefined || message.text !== '')) {
       // Agents answer in Markdown; the user's own text stays literal.
       entry.bubble.classList.add('md');
       entry.bubble.replaceChildren(renderMarkdown(message.text));
+      // What arrived before a failure stays; the error reads as the agent's next line.
+      if (failure !== undefined) entry.bubble.append(element('p', undefined, failure));
     } else {
       entry.bubble.classList.remove('md');
-      // A failed reply never shows why it failed — see visitorMessage().
-      entry.bubble.textContent = message.error !== undefined ? visitorMessage(message.error, errorLines(), message.id, message.errorCode, settings.language) : message.text;
+      entry.bubble.textContent = failure ?? message.text;
     }
 
     entry.tools.replaceChildren(
@@ -739,8 +742,9 @@ export function initWebchat(
   client.on('message', renderMessage);
   client.on('ready', persist);
   client.on('error', (error) => {
-    // `busy` and per-turn failures already show up on the message itself.
-    if (error.code === 'busy' || error.details?.messageId) return;
+    // `busy` and per-turn failures already show up on the message itself; a
+    // cancelled turn is one the visitor or the widget chose to end.
+    if (error.code === 'busy' || error.code === 'cancelled' || error.details?.messageId) return;
     showError(error);
   });
 
@@ -897,15 +901,13 @@ export function initWebchat(
     }
     // First real send: this is when the visitor's browser is first written to.
     commitStorage();
-    sendButton.disabled = true;
+    // The client queues it if the agent is still answering, so the composer stays open.
     void client
       .send(text)
       // A failure tied to a message is already shown on it, as for `error` events.
       .catch((error: unknown) => {
-        if (!(error instanceof WebchatError && error.details?.messageId)) showError(error);
-      })
-      .finally(() => {
-        sendButton.disabled = false;
+        if (error instanceof WebchatError && (error.details?.messageId || error.code === 'cancelled')) return;
+        showError(error);
       });
   }
 

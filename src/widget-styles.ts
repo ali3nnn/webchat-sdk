@@ -88,6 +88,9 @@ export const WIDGET_CSS = `
 .group { display: flex; flex-direction: column; gap: 6px; max-width: 82%; }
 .root[data-bubbles="wide"] .group { max-width: 94%; }
 .group[data-role="user"] { align-self: flex-end; align-items: flex-end; }
+/* Each agent message is as wide as its text, up to the block's max-width. */
+.group[data-role="assistant"] { align-self: flex-start; align-items: flex-start; }
+.group[data-role="assistant"] .group-body { align-items: flex-start; max-width: 100%; }
 .group-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--wc-muted); }
 .group-head .avatar { width: 26px; height: 26px; font-size: 11px; }
 .group[data-role="user"] .group-head { display: none; }
@@ -97,8 +100,10 @@ export const WIDGET_CSS = `
 .group-body { display: flex; flex-direction: column; gap: 6px; }
 .group[data-role="user"] .group-body { align-items: flex-end; }
 
-.msg { display: flex; flex-direction: column; gap: 4px; }
+.msg { display: flex; flex-direction: column; gap: 4px; max-width: 100%; }
+.msg[data-role="assistant"] { align-items: flex-start; }
 .bubble {
+  max-width: 100%;
   padding: 10px 14px; border-radius: var(--wc-bubble-radius); font-size: 14px; line-height: 1.5;
   white-space: pre-wrap; word-wrap: break-word; background: var(--wc-assistant-bg); color: var(--wc-assistant-fg);
 }
@@ -167,7 +172,6 @@ export const WIDGET_CSS = `
   border: 0; border-radius: 12px; padding: 0 16px; cursor: pointer;
   background: var(--wc-accent); color: var(--wc-on-accent); font-size: 14px; font-weight: 500;
 }
-.composer button:disabled { opacity: .5; cursor: default; }
 .composer button.icon-send { width: 42px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
 .composer button.icon-send svg { width: 18px; height: 18px; }
 
