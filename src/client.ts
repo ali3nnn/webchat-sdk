@@ -30,6 +30,17 @@ interface PendingTurn {
   messageId?: string;
 }
 
+/** A message waiting for its turn. The head of the queue is the one being answered. */
+interface QueuedTurn {
+  id: string;
+  text: string;
+  resolve: (message: WebchatMessage) => void;
+  reject: (error: unknown) => void;
+}
+
+/** How soon a turn the agent refused as `busy` is offered again. */
+const BUSY_RETRY_MS = 500;
+
 /**
  * How long before `expiresAt` a grant stops being reused. A token that expires
  * between the check and the agent's verification is refused, and a refused
@@ -88,6 +99,9 @@ export class WebchatClient extends Emitter<WebchatEvents> {
   private readonly transcript: WebchatMessage[] = [];
   /** Keyed by the client-generated id we sent as `chat:send.id`. */
   private readonly pending = new Map<string, PendingTurn>();
+  /** The agent answers one message at a time; the rest wait here, in order. */
+  private readonly queue: QueuedTurn[] = [];
+  private draining = false;
   private destroyed = false;
 
   constructor(options: WebchatClientOptions) {
@@ -148,44 +162,33 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     return this.connectPromise;
   }
 
-  /** Sends a message and resolves with the completed assistant reply. */
+  /**
+   * Sends a message and resolves with the completed assistant reply.
+   *
+   * A message sent while another is being answered shows in the transcript at
+   * once and goes to the agent when that reply has finished, in order.
+   */
   async send(text: string): Promise<WebchatMessage> {
     const trimmed = text.trim();
     if (trimmed === '') {
       throw new WebchatError('Cannot send an empty message.', 'invalid_message');
     }
 
-    await this.connect();
-    const transport = this.transport;
-    if (!transport) {
-      throw new WebchatError('Not connected.', 'disconnected', { agentId: this.agentId });
-    }
-
     const id = randomId();
+    // `pending` until it leaves: a page reloaded before then has not sent it,
+    // so it is not one to bring back as said (the widget stores only finished messages).
     this.upsert({
       id,
       role: 'user',
       text: trimmed,
       createdAt: new Date().toISOString(),
-      status: 'complete',
+      status: 'pending',
       tools: [],
     });
 
     return new Promise<WebchatMessage>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(
-          new WebchatError(
-            'The agent did not finish the reply in time.',
-            'timeout',
-            { agentId: this.agentId },
-          ),
-        );
-      }, this.options.replyTimeoutMs ?? 120_000);
-
-      this.pending.set(id, { resolve, reject, timer });
-      const page = pageUrl();
-      transport.send({ id, text: trimmed, ...(page ? { pageUrl: page } : {}) });
+      this.queue.push({ id, text: trimmed, resolve, reject });
+      void this.drain();
     });
   }
 
@@ -250,6 +253,95 @@ export class WebchatClient extends Emitter<WebchatEvents> {
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
+
+  /** Works through the queue, one finished turn at a time. */
+  private async drain(): Promise<void> {
+    if (this.draining) return;
+    this.draining = true;
+    for (let turn = this.queue[0]; turn; turn = this.queue[0]) {
+      try {
+        turn.resolve(await this.runTurn(turn));
+      } catch (error) {
+        turn.reject(error);
+      }
+      if (this.queue[0] === turn) this.queue.shift();
+    }
+    this.draining = false;
+  }
+
+  /**
+   * One message, from connecting to the finished reply. The reply's time limit
+   * starts here, not when the message joined the queue. A `busy` is not the
+   * visitor's problem: the agent is finishing a turn the client has already let
+   * go of, or one from another tab of the same conversation.
+   */
+  private async runTurn(turn: QueuedTurn): Promise<WebchatMessage> {
+    const timeoutMs = this.options.replyTimeoutMs ?? 120_000;
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      try {
+        await this.connect();
+      } catch (error) {
+        // Nothing behind this message can get through either.
+        if (this.queue[0] === turn) this.failQueue(error);
+        throw error;
+      }
+      const transport = this.transport;
+      if (!transport) {
+        throw new WebchatError('Not connected.', 'disconnected', { agentId: this.agentId });
+      }
+      // Reset or disconnected while connecting: already rejected, must not leave.
+      if (this.queue[0] !== turn) {
+        throw new WebchatError('The conversation was reset.', 'cancelled');
+      }
+
+      const message = this.find(turn.id);
+      if (message?.status === 'pending') {
+        message.status = 'complete';
+        this.emit('message', { ...message, tools: [...message.tools] });
+      }
+
+      try {
+        return await this.dispatch(turn, transport, Math.max(deadline - Date.now(), 0));
+      } catch (error) {
+        const busy = error instanceof WebchatError && error.code === 'busy';
+        if (!busy || Date.now() + BUSY_RETRY_MS >= deadline) throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, BUSY_RETRY_MS));
+      if (this.queue[0] !== turn) {
+        throw new WebchatError('The conversation was reset.', 'cancelled');
+      }
+    }
+  }
+
+  private dispatch(turn: QueuedTurn, transport: Transport, timeoutMs: number): Promise<WebchatMessage> {
+    return new Promise<WebchatMessage>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const messageId = this.pending.get(turn.id)?.messageId;
+        this.pending.delete(turn.id);
+        // The agent would otherwise stay busy with a reply nobody awaits, and
+        // the next message in the queue would wait on it.
+        transport.cancel({});
+        const text = 'The agent did not finish the reply in time.';
+        const message = messageId ? this.find(messageId) : undefined;
+        if (message) {
+          message.status = 'error';
+          message.error = text;
+          message.errorCode = 'timeout';
+          this.emit('message', { ...message, tools: [...message.tools] });
+        }
+        reject(new WebchatError(text, 'timeout', { agentId: this.agentId, messageId }));
+      }, timeoutMs);
+
+      this.pending.set(turn.id, { resolve, reject, timer });
+      const page = pageUrl();
+      transport.send({ id: turn.id, text: turn.text, ...(page ? { pageUrl: page } : {}) });
+    });
+  }
+
+  private failQueue(error: unknown): void {
+    for (const turn of this.queue.splice(0)) turn.reject(error);
+  }
 
   private async open(): Promise<SessionReadyEvent> {
     this.setStatus('connecting');
@@ -471,7 +563,11 @@ export class WebchatClient extends Emitter<WebchatEvents> {
   }
 
   private onError(event: ChatErrorEvent): void {
-    const message = event.messageId ? this.find(event.messageId) : undefined;
+    const turn = event.replyTo ? this.pending.get(event.replyTo) : undefined;
+    // A stream that broke is reported without a message id, but the turn knows
+    // which reply it was: that bubble must not keep its typing dots.
+    const messageId = event.messageId ?? turn?.messageId;
+    const message = messageId ? this.find(messageId) : undefined;
     if (message) {
       message.status = 'error';
       message.error = event.message;
@@ -482,11 +578,11 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     const code = event.code === 'agent_error' ? 'agent_error' : event.code;
     const failure = new WebchatError(event.message, code, {
       agentId: this.agentId,
-      messageId: event.messageId,
+      messageId,
     });
-    this.emit('error', failure);
+    // A `busy` on a turn in hand is retried (see runTurn), not news.
+    if (!(turn && event.code === 'busy')) this.emit('error', failure);
 
-    const turn = event.replyTo ? this.pending.get(event.replyTo) : undefined;
     if (turn && event.replyTo) {
       clearTimeout(turn.timer);
       this.pending.delete(event.replyTo);
@@ -509,8 +605,21 @@ export class WebchatClient extends Emitter<WebchatEvents> {
     for (const [id, turn] of this.pending) {
       clearTimeout(turn.timer);
       this.pending.delete(id);
-      turn.reject(error);
+      // A reply cut off here gets no `chat:error`, so it must not keep streaming.
+      // (After reset() the transcript is empty and there is nothing to mark.)
+      const message = turn.messageId ? this.find(turn.messageId) : undefined;
+      if (message) {
+        message.status = 'error';
+        message.error = error.message;
+        message.errorCode = error.code;
+        this.emit('message', { ...message, tools: [...message.tools] });
+      }
+      const failure = message ? new WebchatError(error.message, error.code, { ...error.details, messageId: message.id }) : error;
+      turn.reject(failure);
+      // It is still at the head of the queue; its caller must hear this version, not failQueue's.
+      this.queue.find((queued) => queued.id === id)?.reject(failure);
     }
+    this.failQueue(error);
   }
 
   private setStatus(status: WebchatStatus): void {

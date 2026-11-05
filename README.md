@@ -313,7 +313,9 @@ does not surface is still available.
 | `correlationIds` | `true` | Put `sessionId` and `agentId` in the handshake URL for log correlation |
 
 Methods: `connect()`, `send(text)` → resolves with the finished assistant
-message, `cancel()`, `reset()`, `disconnect()`, `destroy()`.
+message (a message sent during another reply waits its turn, in order; `reset()`
+and a lost connection reject what is still waiting), `cancel()`, `reset()`,
+`disconnect()`, `destroy()`.
 Properties: `status`, `info` (the handshake), `agentId` (the project the agent
 identified itself as), `sessionId`, `messages`.
 
@@ -363,7 +365,8 @@ raises `protocol_mismatch` when they differ.
 | ← agent | `chat:error` | `{ code, message, messageId?, replyTo? }` |
 
 One turn at a time per socket: sending while the agent is still answering is
-rejected with `busy` rather than interleaved.
+rejected with `busy` rather than interleaved. `WebchatClient` never does that
+itself: it queues `send()` calls, and retries a `busy` until `replyTimeoutMs`.
 
 ### Over HTTP
 
@@ -393,8 +396,8 @@ never in the body — a token bound to one conversation cannot be pointed at
 another.
 
 What changes: `status` goes `connecting` → `connected` once and stays there
-(there is nothing to reconnect), `busy` is answered locally when a turn is
-already in flight, and a host that cuts a response before `done` — a
+(there is nothing to reconnect), a transport used directly answers `busy`
+locally when a turn is already in flight, and a host that cuts a response before `done` — a
 serverless max duration, a proxy — leaves what was streamed on the message and
 fails the turn with `agent_error`.
 
