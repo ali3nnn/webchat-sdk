@@ -130,8 +130,6 @@ export const WIDGET_CSS = `
 
 .tools { display: flex; flex-wrap: wrap; gap: 6px; }
 .tool { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--wc-line); color: var(--wc-muted); }
-.tool[data-status="completed"] { border-color: #2f9e44; color: #2f9e44; }
-.tool[data-status="failed"] { border-color: #e03131; color: #e03131; }
 
 .feedback { display: inline-flex; gap: 2px; }
 .feedback button { border: 0; background: transparent; color: var(--wc-muted); cursor: pointer; padding: 2px 4px; border-radius: 6px; display: grid; place-items: center; }

@@ -22,7 +22,7 @@ console.log(`transport: ${transport ?? 'auto'}`);
 const events = [];
 const client = createWebchatClient({ url, projectToken, transport });
 client.on('status', (status) => events.push(`status:${status}`));
-client.on('tool', (tool) => events.push(`tool:${tool.name}:${tool.status}`));
+client.on('tool', (tool) => events.push(`tool:${tool.label}`));
 client.on('delta', () => events.push('delta'));
 
 const ready = await client.connect();
@@ -39,13 +39,14 @@ console.log(`small talk  -> ${smallTalk.text}`);
 
 const factual = await client.send('what are the support hours?');
 assert.equal(factual.status, 'complete');
-assert.equal(factual.tools[0]?.name, 'knowledge_retrieval', 'factual question calls the tool');
-assert.equal(factual.tools[0]?.status, 'completed');
+assert.equal(factual.tools[0]?.label, 'Knowledge base', 'factual question calls the tool');
+assert.equal(factual.tools[0]?.name, undefined, 'a visitor never gets the tool name');
+assert.equal(factual.usage, undefined, 'a visitor never gets token usage');
 assert.match(factual.text, /support-policy\.md/, 'answer cites the retrieved document');
 console.log(`retrieval   -> ${factual.text}`);
 
 assert.ok(events.includes('delta'), 'text arrived incrementally');
-assert.ok(events.includes('tool:knowledge_retrieval:started'), 'tool start was reported');
+assert.ok(events.includes('tool:Knowledge base'), 'tool use was reported');
 assert.equal(client.messages.length, 4, 'transcript holds both turns');
 
 // A bad token must be refused: by the handshake on a socket, by the first

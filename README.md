@@ -196,7 +196,7 @@ const client = createWebchatClient({
 });
 
 client.on('delta', ({ text }) => process.stdout.write(text));
-client.on('tool', (tool) => console.log(`[${tool.name}] ${tool.status}`));
+client.on('tool', (tool) => console.log(`[${tool.label}]`)); // e.g. "Knowledge base"
 
 await client.connect();
 const reply = await client.send('what are the support hours?');
@@ -327,7 +327,7 @@ Events (`client.on(name, handler)` returns an unsubscribe function):
 | `status` | `idle` \| `connecting` \| `connected` \| `reconnecting` \| `disconnected` |
 | `message` | a message was added or changed — re-render your transcript |
 | `delta` | `{ messageId, text }`, incremental assistant text |
-| `tool` | tool call started / completed / failed, with input and output |
+| `tool` | a tool the agent used, by label ("Knowledge base", "Web search"); Studio sessions also get name, status, input and output |
 | `complete` | the finished assistant message |
 | `error` | a `WebchatError` |
 
@@ -360,8 +360,8 @@ raises `protocol_mismatch` when they differ.
 | ← agent | `session:ready` | agent identity + protocol version |
 | ← agent | `chat:started` | `{ messageId, replyTo }` |
 | ← agent | `chat:delta` | `{ messageId, text }` |
-| ← agent | `chat:tool` | `{ messageId, toolCallId, name, status, input?, output?, error? }` |
-| ← agent | `chat:complete` | `{ messageId, replyTo, text, finishReason, usage }` |
+| ← agent | `chat:tool` | `{ messageId, label }`; Studio sessions: `+ toolCallId, name, status, input?, output?, error?` |
+| ← agent | `chat:complete` | `{ messageId, replyTo, text, finishReason }`; Studio sessions: `+ usage` |
 | ← agent | `chat:error` | `{ code, message, messageId?, replyTo? }` |
 
 One turn at a time per socket: sending while the agent is still answering is
@@ -381,9 +381,9 @@ POST /chat/stream           Authorization: Bearer <token>
 
 event: session   { sessionId, projectId, protocolVersion }
 event: started   { messageId, replyTo }
-event: tool      { messageId, toolCallId, name, status, input?, output?, error? }
+event: tool      { messageId, label }            (Studio: + toolCallId, name, status, input?, output?, error?)
 event: delta     { messageId, text }
-event: done      { sessionId, messageId, replyTo, text, finishReason, usage }
+event: done      { sessionId, messageId, replyTo, text, finishReason }   (Studio: + usage)
 event: error     { code, message, messageId?, replyTo? }
 ```
 
