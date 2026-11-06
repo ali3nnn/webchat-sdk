@@ -327,7 +327,7 @@ Events (`client.on(name, handler)` returns an unsubscribe function):
 | `status` | `idle` \| `connecting` \| `connected` \| `reconnecting` \| `disconnected` |
 | `message` | a message was added or changed — re-render your transcript |
 | `delta` | `{ messageId, text }`, incremental assistant text |
-| `tool` | a tool the agent used, by label ("Knowledge base", "Web search"); Studio sessions also get name, status, input and output |
+| `tool` | a tool the agent used, by label ("Knowledge base", "Web search"), only when the project has "Show tools used" on; Studio sessions always get it, with name, status, input and output |
 | `complete` | the finished assistant message |
 | `error` | a `WebchatError` |
 
@@ -360,7 +360,7 @@ raises `protocol_mismatch` when they differ.
 | ← agent | `session:ready` | agent identity + protocol version |
 | ← agent | `chat:started` | `{ messageId, replyTo }` |
 | ← agent | `chat:delta` | `{ messageId, text }` |
-| ← agent | `chat:tool` | `{ messageId, label }`; Studio sessions: `+ toolCallId, name, status, input?, output?, error?` |
+| ← agent | `chat:tool` | `{ messageId, label }`, only with "Show tools used" on; Studio sessions: always, `+ toolCallId, name, status, input?, output?, error?` |
 | ← agent | `chat:complete` | `{ messageId, replyTo, text, finishReason }`; Studio sessions: `+ usage` |
 | ← agent | `chat:error` | `{ code, message, messageId?, replyTo? }` |
 
