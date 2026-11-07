@@ -31,11 +31,18 @@ export interface ChatDeltaEvent {
   text: string;
 }
 
+/**
+ * A tool the agent used, sent to visitors only when the project has "Show
+ * tools used" on. Visitors get only its `label` ("Knowledge base",
+ * "Web search"), once per call; the rest is sent to Studio sessions only.
+ */
 export interface ChatToolEvent {
   messageId: string;
-  toolCallId: string;
-  name: string;
-  status: 'started' | 'completed' | 'failed';
+  label: string;
+  /** Studio sessions only, as is everything below. */
+  toolCallId?: string;
+  name?: string;
+  status?: 'started' | 'completed' | 'failed';
   input?: unknown;
   /** Present when status is 'completed'. */
   output?: unknown;

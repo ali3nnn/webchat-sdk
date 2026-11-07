@@ -127,10 +127,12 @@ export type WebchatStatus =
   | 'reconnecting'
   | 'disconnected';
 
+/** A tool the agent used: its `label` for visitors; the rest in Studio sessions only. */
 export interface WebchatToolActivity {
-  toolCallId: string;
-  name: string;
-  status: 'started' | 'completed' | 'failed';
+  label: string;
+  toolCallId?: string;
+  name?: string;
+  status?: 'started' | 'completed' | 'failed';
   input?: unknown;
   output?: unknown;
   error?: string;
@@ -147,6 +149,7 @@ export interface WebchatMessage {
   error?: string;
   /** Why it failed, when the agent said (`quota_exceeded`, `agent_error`, …). */
   errorCode?: string;
+  /** Token usage: Studio sessions only. */
   usage?: { inputTokens?: number; outputTokens?: number };
   /** The visitor's rating of an assistant message, when feedback is enabled. */
   feedback?: 'up' | 'down' | null;

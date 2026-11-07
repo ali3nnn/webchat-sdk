@@ -21,6 +21,7 @@ import type {
   WebchatEvents,
   WebchatMessage,
   WebchatStatus,
+  WebchatToolActivity,
 } from './types.js';
 
 interface PendingTurn {
@@ -230,10 +231,10 @@ export class WebchatClient extends Emitter<WebchatEvents> {
    * Seeds the local transcript with messages saved earlier (the widget keeps
    * them in localStorage), so a visitor sees their conversation on every page.
    */
-  restore(messages: WebchatMessage[]): void {
+  restore(messages: Omit<WebchatMessage, 'tools' | 'usage'>[]): void {
     for (const message of messages) {
       if (this.find(message.id)) continue;
-      this.transcript.push({ ...message, tools: [...(message.tools ?? [])] });
+      this.transcript.push({ ...message, tools: [] });
     }
   }
 
@@ -527,8 +528,12 @@ export class WebchatClient extends Emitter<WebchatEvents> {
   private onTool(event: ChatToolEvent): void {
     const message = this.find(event.messageId);
     if (!message) return;
-    const existing = message.tools.find((tool) => tool.toolCallId === event.toolCallId);
-    const activity = {
+    // A Studio event names its call; a visitor's is one per call, told apart by label.
+    const existing = message.tools.find((tool) =>
+      event.toolCallId ? tool.toolCallId === event.toolCallId : !tool.toolCallId && tool.label === event.label);
+    const activity: WebchatToolActivity = {
+      // An agent older than labels sends only the name.
+      label: event.label ?? event.name ?? 'Tool',
       toolCallId: event.toolCallId,
       name: event.name,
       status: event.status,

@@ -220,8 +220,18 @@ function visitorMessage(error: unknown, lines: readonly string[], seed?: string,
 /* ── localStorage, all guarded: private mode and disabled storage must not break the chat ── */
 interface StoredConversation {
   sessionId: string;
-  messages: WebchatMessage[];
+  messages: StoredMessage[];
   updatedAt: string;
+}
+type StoredMessage = Omit<WebchatMessage, 'tools' | 'usage'>;
+/**
+ * What of a message goes into the visitor's browser: what they saw, nothing
+ * more. Tool activity and token usage are the agent's business, not the
+ * visitor's, so they are never written.
+ */
+function storableMessage(message: WebchatMessage): StoredMessage {
+  const { tools: _tools, usage: _usage, ...rest } = message;
+  return rest;
 }
 const CONVERSATION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -672,11 +682,7 @@ export function initWebchat(
 
     entry.tools.replaceChildren(
       ...(settings.showTools
-        ? message.tools.map((tool) => {
-            const chip = element('span', 'tool', `${tool.name} · ${tool.status}`);
-            chip.dataset.status = tool.status;
-            return chip;
-          })
+        ? [...new Set(message.tools.map((tool) => tool.label))].map((label) => element('span', 'tool', label))
         : []),
     );
 
@@ -703,7 +709,9 @@ export function initWebchat(
   function persist(): void {
     if (!settings.persistConversation) return;
     const sessionId = client.sessionId;
-    const messages = client.messages.filter((message) => message.status === 'complete' || message.status === 'error');
+    const messages = client.messages
+      .filter((message) => message.status === 'complete' || message.status === 'error')
+      .map(storableMessage);
     if (!sessionId || messages.length === 0) return;
     storageWrite(conversationKey(), { sessionId, messages, updatedAt: new Date().toISOString() } satisfies StoredConversation);
   }
@@ -736,7 +744,7 @@ export function initWebchat(
     restoredSessionId = stored.sessionId;
     (client as unknown as { options: WebchatClientOptions }).options.sessionId = stored.sessionId;
     client.restore(stored.messages);
-    for (const message of stored.messages) renderMessage(message);
+    for (const message of client.messages) renderMessage(message);
   }
 
   client.on('message', renderMessage);
