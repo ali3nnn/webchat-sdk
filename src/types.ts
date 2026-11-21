@@ -71,7 +71,11 @@ export interface WebchatSettings {
   timestamps: 'hidden' | '12h' | '24h';
   /** Gate the composer behind a notice until accepted (remembered in localStorage). */
   privacy: { enabled: boolean; title: string; content: string; acceptLabel: string };
-  /** Keep the transcript in localStorage and resume the session across pages. */
+  /**
+   * Keep the transcript in localStorage and resume the session across pages.
+   * A floating panel left open mid-conversation also opens again on the next
+   * page (not on phones, nor when the embed sets `open`).
+   */
   persistConversation: boolean;
   showNewChatButton: boolean;
   /** The header's "new chat" button is an icon; this is its tooltip and accessible name. Blank falls back to "Start a new chat". */

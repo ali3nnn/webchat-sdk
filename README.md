@@ -146,7 +146,9 @@ The widget's look and behaviour are configured per project in the agent's Chat
 Studio and served at `GET /widget/config?projectToken=…`: agent name and avatar,
 colours (launcher, bubbles, background, header), bubble style, greetings,
 teaser message, AI disclaimer, input/send texts, timestamps, privacy notice,
-persistence across pages, the "New chat" button, thumbs up/down feedback, and
+persistence across pages (the conversation, and a floating panel left open
+reopens on the next page — except on phones or when the embed sets `open`),
+the "New chat" button, thumbs up/down feedback, and
 the "Powered by" line under the composer (`watermark: { enabled, html }` — on by
 default; its HTML keeps only links and bold/italic, and a bare-domain `href`
 gets `https://`). On a plan that requires the watermark the agent sends it
