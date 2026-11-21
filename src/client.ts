@@ -425,6 +425,8 @@ export class WebchatClient extends Emitter<WebchatEvents> {
         url: this.options.url,
         sessionId: options.sessionId ?? this.sessionId,
         userId: this.options.userId,
+        // Strictly `true`: a truthy string from a page's config must not turn it on.
+        ...(this.options.preview === true ? { preview: true } : {}),
       });
       this.grant = grant;
       this.grantMintedAt = Date.now();
