@@ -981,7 +981,6 @@ export function initWebchat(
     applySettings();
     markReady();
     restoreConversation();
-    restoreOpenPanel();
   })();
 
   /**
@@ -997,6 +996,9 @@ export function initWebchat(
   }
   void configured.then(() => {
     if (destroyed) return;
+    // After `configured` exists: open() connects through it, and with
+    // fetchConfig: false the block above runs before it is assigned.
+    restoreOpenPanel();
     if (options.previewError) return;
     if ((connectOn ?? 'open') === 'load' || isOpen) client.connect().catch(showError);
   });
