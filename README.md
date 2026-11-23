@@ -146,7 +146,9 @@ The widget's look and behaviour are configured per project in the agent's Chat
 Studio and served at `GET /widget/config?projectToken=…`: agent name and avatar,
 colours (launcher, bubbles, background, header), bubble style, greetings,
 teaser message, AI disclaimer, input/send texts, timestamps, privacy notice,
-persistence across pages, the "New chat" button, thumbs up/down feedback, and
+persistence across pages (the conversation, and a floating panel left open
+reopens on the next page — except on phones or when the embed sets `open`),
+the "New chat" button, thumbs up/down feedback, and
 the "Powered by" line under the composer (`watermark: { enabled, html }` — on by
 default; its HTML keeps only links and bold/italic, and a bare-domain `href`
 gets `https://`). On a plan that requires the watermark the agent sends it
@@ -264,6 +266,21 @@ session id, so the visitor keeps their history across an expiry.
 Tokens are HMAC-signed and carry the session id, so any replica of the agent
 sharing `WEBCHAT_TOKEN_SECRET` can verify a token it did not issue.
 
+### Previewing the prompt draft
+
+```ts
+initWebchat({ url, projectToken, preview: true });
+```
+
+The session answers with the system prompt draft saved in the Chat Studio
+instead of the published one, so a change can be tried in the real widget
+before visitors get it. The agent decides, not the page: it grants the draft
+only when the request comes from a page on its `webchat.previewOrigins`
+(brainigy.eu and its subdomains by default) and otherwise answers with the live
+prompt. It goes by the Origin header, which a browser sets and a page cannot
+change, so other websites cannot show a draft — but a script outside a browser
+can send any Origin, so treat a draft as unpublished, not secret.
+
 ### What is on the wire
 
 Identity travels in the socket.io `auth` payload, inside the signed token — not
@@ -301,6 +318,7 @@ does not surface is still available.
 | `url` | — | Base URL of the agent container (required) |
 | `projectToken` | — | The project's public embed token (24 characters, `wc_…`), from the Chat Studio — sent to `POST /sessions`. Required unless `token` or your own `tokenProvider` names the project. |
 | `token` | — | A session token you already hold |
+| `preview` | `false` | `true` asks for the project's unpublished system prompt draft, to try it before publishing. Granted only to pages on the agent's preview origins (brainigy.eu and its subdomains); elsewhere the session answers with the live prompt. The grant's `preview` says which one you got. Passed to a custom `tokenProvider` as `context.preview`. |
 | `tokenProvider` | POST `${url}/sessions` | How to obtain/refresh tokens |
 | `sessionId` | — | Resume an existing conversation |
 | `transport` | from `GET /widget/config`, else auto | How the conversation travels — the only transport setting. `"websocket"`: one connection held open, the fastest. `"polling"`: the same over repeated requests (socket.io long-polling), for networks that block websockets. `"http"`: one `POST /chat/stream` per message, the reply read as SSE — nothing held open, no sticky sessions, passes any proxy that passes ordinary requests (Vercel included). Leave it out and the widget follows the agent's `webchat.transport`; failing that, it tries a websocket and falls back to polling. Anything else throws `invalid_options`. |

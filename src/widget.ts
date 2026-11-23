@@ -436,6 +436,10 @@ export function initWebchat(
   const conversationKey = () => `${storageBase}:conversation`;
   const privacyKey = () => `${storageBase}:privacy`;
   const teaserKey = () => `${storageBase}:teaser`;
+  /** Set while a floating panel is open, so the next page opens it again; see restoreOpenPanel. */
+  const openKey = () => `${storageBase}:open`;
+  /** Floating panels only (an inline one is always open), and only alongside a kept conversation. */
+  const remembersOpen = () => !inline && settings.persistConversation;
   // Fixed at start, unlike the keys above: it is read on the day the agent is
   // down, when no config arrives to say which agent this is.
   const errorMessagesKey = `${storageBase}:error-messages`;
@@ -730,6 +734,7 @@ export function initWebchat(
     if (settings.privacy.enabled && privacyAccepted) storageWrite(privacyKey(), new Date().toISOString());
     const lines = toneLines(settings.errorMessages);
     if (lines.length > 0) storageWrite(errorMessagesKey, lines);
+    if (isOpen && remembersOpen()) storageWrite(openKey(), true);
     persist();
   }
 
@@ -842,6 +847,8 @@ export function initWebchat(
     panel.hidden = false;
     teaser.hidden = true;
     launcher.setAttribute('aria-label', 'Close chat');
+    // Written only once the visitor has engaged (storageWrite waits for that).
+    if (remembersOpen()) storageWrite(openKey(), true);
     connect();
     if (privacyAccepted) input.focus();
   }
@@ -852,6 +859,7 @@ export function initWebchat(
     syncPageScroll();
     panel.hidden = true;
     launcher.setAttribute('aria-label', 'Open chat');
+    storageRemove(openKey());
   }
 
   function toggle(): void {
@@ -974,8 +982,23 @@ export function initWebchat(
     markReady();
     restoreConversation();
   })();
+
+  /**
+   * A visitor who left the chat open on one page finds it open on the next,
+   * mid-conversation. Not on a phone, where the open panel covers the page they
+   * just navigated to; not when the embed decided with `open`; and only when
+   * there is a conversation to come back to.
+   */
+  function restoreOpenPanel(): void {
+    if (!remembersOpen() || isOpen || options.open !== undefined || phone?.matches) return;
+    if (client.messages.length === 0 || storageRead<boolean>(openKey()) !== true) return;
+    open();
+  }
   void configured.then(() => {
     if (destroyed) return;
+    // After `configured` exists: open() connects through it, and with
+    // fetchConfig: false the block above runs before it is assigned.
+    restoreOpenPanel();
     if (options.previewError) return;
     if ((connectOn ?? 'open') === 'load' || isOpen) client.connect().catch(showError);
   });

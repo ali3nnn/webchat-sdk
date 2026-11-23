@@ -24,7 +24,7 @@ export function createDefaultTokenProvider(options: {
   headers?: Record<string, string>;
   fetchImpl?: typeof globalThis.fetch;
 }): TokenProvider {
-  return async ({ url, sessionId, projectToken, userId }) => {
+  return async ({ url, sessionId, projectToken, userId, preview }) => {
     const fetchImpl = options.fetchImpl ?? globalThis.fetch;
     if (typeof fetchImpl !== 'function') {
       throw new WebchatError(
@@ -46,6 +46,7 @@ export function createDefaultTokenProvider(options: {
           ...(projectToken ? { projectToken } : {}),
           ...(userId ? { userId } : {}),
           ...(pageUrl() ? { pageUrl: pageUrl() } : {}),
+          ...(preview ? { preview: true } : {}),
         }),
       });
     } catch (error) {

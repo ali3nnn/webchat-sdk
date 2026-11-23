@@ -71,7 +71,11 @@ export interface WebchatSettings {
   timestamps: 'hidden' | '12h' | '24h';
   /** Gate the composer behind a notice until accepted (remembered in localStorage). */
   privacy: { enabled: boolean; title: string; content: string; acceptLabel: string };
-  /** Keep the transcript in localStorage and resume the session across pages. */
+  /**
+   * Keep the transcript in localStorage and resume the session across pages.
+   * A floating panel left open mid-conversation also opens again on the next
+   * page (not on phones, nor when the embed sets `open`).
+   */
   persistConversation: boolean;
   showNewChatButton: boolean;
   /** The header's "new chat" button is an icon; this is its tooltip and accessible name. Blank falls back to "Start a new chat". */
@@ -107,6 +111,12 @@ export interface TokenGrant {
   historyLength?: number;
   protocolVersion?: number;
   webchat?: WebchatSettings;
+  /**
+   * Whether this session answers with the project's unpublished prompt draft:
+   * true only when `preview` was asked for and the agent allowed it. An agent
+   * older than preview leaves it out.
+   */
+  preview?: boolean;
 }
 
 export type TokenProvider = (context: {
@@ -118,6 +128,8 @@ export type TokenProvider = (context: {
   sessionId?: string;
   /** Stable visitor id, so the agent can count returning users. */
   userId?: string;
+  /** True when the client was created with `preview: true`; pass it on as `preview` in your POST /sessions. */
+  preview?: boolean;
 }) => TokenGrant | Promise<TokenGrant>;
 
 export type WebchatStatus =
@@ -170,6 +182,14 @@ export interface WebchatClientOptions {
   projectToken?: string;
   /** A session token you already have (minted by your backend). */
   token?: string;
+  /**
+   * Ask for the project's unpublished system prompt draft instead of the live
+   * one, to try a change before publishing it. Off unless exactly `true`. The
+   * agent grants it only to pages on its preview origins (brainigy.eu and its
+   * subdomains); anywhere else the session quietly answers with the live
+   * prompt. `TokenGrant.preview` says which one you got.
+   */
+  preview?: boolean;
   /**
    * How to obtain a token. Defaults to POSTing to `${url}/sessions`, which is
    * what a public widget wants; pass your own to mint tokens on your backend.
